@@ -1,0 +1,150 @@
+@import "tailwindcss";
+@import "katex/dist/katex.min.css";
+
+:root {
+  --desk-oak-light: #F5EBE0;
+  --desk-oak-warm: #E6D5B8;
+  --desk-oak-deep: #D4B996;
+  --paper-cream: #FDFBF7;
+  --paper-ruled: #E8E2D5;
+  --slate-ink: #1E293B;
+  --chalkboard-slate: #1A2E26;
+  --chalkboard-border: #3E2723;
+  --chalk-white: #F1F5F9;
+  --mastery-mint: #10B981;
+  --mastery-amber: #F59E0B;
+  --mastery-coral: #EF4444;
+  --mastery-yellow: #FDE047;
+}
+
+@theme inline {
+  --color-desk-light: var(--desk-oak-light);
+  --color-desk-warm: var(--desk-oak-warm);
+  --color-paper-cream: var(--paper-cream);
+  --color-slate-ink: var(--slate-ink);
+  --color-chalkboard: var(--chalkboard-slate);
+  --color-mastery-mint: var(--mastery-mint);
+  --color-mastery-amber: var(--mastery-amber);
+  --color-mastery-coral: var(--mastery-coral);
+  --color-mastery-yellow: var(--mastery-yellow);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-serif: var(--font-fraunces);
+}
+
+body {
+  background-color: var(--desk-oak-light);
+  color: var(--slate-ink);
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Tactile Light Oak / Pine Wood Desk Surface with subtle organic grain */
+.desk-wood-surface {
+  background-color: #F5EBE0;
+  background-image:
+    radial-gradient(ellipse at 50% 0%, rgba(255, 252, 245, 0.55) 0%, transparent 70%),
+    repeating-linear-gradient(
+      90deg,
+      rgba(230, 213, 184, 0.36) 0px,
+      rgba(230, 213, 184, 0.36) 2px,
+      transparent 2px,
+      transparent 14px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      rgba(212, 185, 150, 0.16) 0px,
+      rgba(212, 185, 150, 0.16) 1px,
+      transparent 1px,
+      transparent 48px
+    ),
+    linear-gradient(135deg, #F5EBE0 0%, #E6D5B8 52%, #EFE2D0 100%);
+}
+
+/* Deep Forest Chalkboard Slate Surface */
+.chalkboard-surface {
+  background-color: #1A2E26;
+  background-image:
+    radial-gradient(circle at 25% 20%, rgba(255, 255, 255, 0.04) 0%, transparent 45%),
+    radial-gradient(circle at 80% 75%, rgba(16, 185, 129, 0.05) 0%, transparent 50%),
+    linear-gradient(180deg, #1E352C 0%, #1A2E26 60%, #14241E 100%);
+  box-shadow:
+    inset 0 2px 12px rgba(0, 0, 0, 0.45),
+    0 12px 28px -6px rgba(15, 23, 42, 0.25);
+}
+
+/* Open Workbook Cream Paper with subtle ruled lines & red margin line */
+.workbook-paper-surface {
+  background-color: #FDFBF7;
+  background-image:
+    linear-gradient(90deg, transparent 39px, rgba(239, 68, 68, 0.22) 39px, rgba(239, 68, 68, 0.22) 41px, transparent 41px),
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 27px,
+      rgba(148, 163, 184, 0.16) 27px,
+      rgba(148, 163, 184, 0.16) 28px
+    );
+  box-shadow:
+    0 10px 25px -5px rgba(0, 0, 0, 0.1),
+    0 2px 6px -1px rgba(0, 0, 0, 0.06),
+    inset 0 0 32px rgba(230, 213, 184, 0.22);
+}
+
+/* Unrolling Paper Scroll texture for Professor Barnaby */
+.barnaby-scroll-surface {
+  background: linear-gradient(180deg, #F7F0E2 0%, #FDFBF7 16%, #FDFBF7 84%, #F3E9D6 100%);
+  box-shadow:
+    0 8px 20px -4px rgba(62, 39, 35, 0.14),
+    inset 0 2px 4px rgba(255, 255, 255, 0.8);
+}
+
+/* Custom CSS 3D Perspective & Paper-Curl Flip Utilities */
+.perspective-1200 {
+  perspective: 1200px;
+}
+
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+
+/* Sticky Note folded bottom corner shadow effect */
+.sticky-paper-curl {
+  position: relative;
+}
+.sticky-paper-curl::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 22px;
+  height: 22px;
+  background: linear-gradient(135deg, transparent 50%, rgba(0, 0, 0, 0.08) 50%);
+  border-top-left-radius: 4px;
+  pointer-events: none;
+}
+
+/* Custom subtle scrollbars for desk panels */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.28);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.45);
+}
