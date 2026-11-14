@@ -140,7 +140,7 @@ export function ProfessorBarnaby({
           {keyUsed ? (
             <span
               className="text-xs font-mono px-2 py-1 rounded-lg bg-[#FDFBF7] text-slate-700 border border-[#D4B996] flex items-center gap-1"
-              title="Gemini 2.0 Flash Key Rotator Slot Used"
+              title="Gemini 3.8 Flash Key Rotator Slot Used"
             >
               <ShieldCheck className="w-3.5 h-3.5 text-[#10B981]" />
               {keyUsed}

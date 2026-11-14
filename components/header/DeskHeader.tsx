@@ -699,7 +699,7 @@ export function DeskHeader() {
                     Desk Locker: API Keys, Saves &amp; Reset
                   </h2>
                   <p className="text-xs text-slate-600 mt-0.5">
-                    Configure real Gemini 2.0 Flash keys, export local backups,
+                    Configure real Gemini 3.8 Flash keys, export local backups,
                     or wipe all desk data cleanly.
                   </p>
                 </div>

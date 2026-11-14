@@ -60,6 +60,92 @@ export class GeminiConfigError extends Error {
   }
 }
 
+export const GEMINI_MODEL = 'gemini-3.8-flash' as const;
+
+const BARNABY_RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    reply: {
+      type: 'string',
+      description:
+        'Main Socratic explanation and encouragement (2-4 concise sentences, natural English only).',
+    },
+    bloomsLevel: {
+      type: 'string',
+      enum: [
+        'Remember',
+        'Understand',
+        'Apply',
+        'Analyze',
+        'Evaluate',
+        'Create',
+      ],
+    },
+    socraticFollowUp: {
+      type: 'string',
+      description:
+        'A specific diagnostic question prompting the student next cognitive step.',
+    },
+    latexFormula: {
+      type: 'string',
+      description:
+        'Optional KaTeX math formula (without surrounding $ signs) illustrating the core equation if relevant.',
+    },
+    latexCaption: {
+      type: 'string',
+      description: 'Short label for the paperclipped formula card.',
+    },
+    hintSteps: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Optional 1-3 step-by-step study nudges.',
+    },
+  },
+  required: ['reply', 'bloomsLevel', 'socraticFollowUp'],
+};
+
+interface InteractionTextShape {
+  status?: string;
+  errors?: Array<{ message?: string }>;
+  output_text?: string;
+  steps?: Array<{
+    type?: string;
+    content?: Array<{ type?: string; text?: string }>;
+  }>;
+}
+
+function extractInteractionText(interaction: InteractionTextShape): string {
+  if (
+    typeof interaction.output_text === 'string' &&
+    interaction.output_text.trim()
+  ) {
+    return interaction.output_text.trim();
+  }
+  const collected: string[] = [];
+  for (const step of interaction.steps ?? []) {
+    if (step.type !== 'model_output' || !Array.isArray(step.content)) continue;
+    for (const part of step.content) {
+      if (part.type === 'text' && typeof part.text === 'string') {
+        collected.push(part.text);
+      }
+    }
+  }
+  return collected.join('').trim();
+}
+
+function parseBarnabyJson(rawText: string): Record<string, unknown> {
+  const cleaned = rawText
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+  const parsed = JSON.parse(cleaned);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Gemini 3.8 Flash returned non-object JSON payload.');
+  }
+  return parsed as Record<string, unknown>;
+}
+
 export const BARNABY_SYSTEM_PROMPT = `You are Professor Barnaby, a warm, scholarly paper-craft owl and Socratic AI teacher perched on a student's tactile wooden study desk.
 
 CORE PEDAGOGICAL DIRECTIVES:
@@ -313,7 +399,7 @@ class GeminiKeyRotator {
   }
 
   /**
-   * Sends a student prompt through the `/api/barnaby` server proxy backed by Gemini 2.0 Flash.
+   * Sends a student prompt through the `/api/barnaby` server proxy backed by the Gemini 3.8 Flash Interactions API.
    * Throws GeminiConfigError when no key is available or if all configured keys fail.
    */
   public async askBarnaby(params: AskBarnabyParams): Promise<BarnabyResponse> {
@@ -438,18 +524,40 @@ ${modeDirective}${ragSnippet}${historySnippet}
 
 Student Input: "${params.userMessage}"`;
 
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.0-flash',
-          contents: prompt,
-          config: {
-            systemInstruction: BARNABY_SYSTEM_PROMPT,
-            responseMimeType: 'application/json',
-            temperature: 0.65,
+        const interaction = await ai.interactions.create(
+          {
+            model: GEMINI_MODEL,
+            system_instruction: BARNABY_SYSTEM_PROMPT,
+            input: prompt,
+            store: false,
+            generation_config: {
+              thinking_level: 'low',
+            },
+            response_format: {
+              type: 'text',
+              mime_type: 'application/json',
+              schema: BARNABY_RESPONSE_SCHEMA,
+            },
           },
-        });
+          { retries: { strategy: 'none' } }
+        );
 
-        const text = response.text || '';
-        const parsed = JSON.parse(text);
+        if (
+          interaction.status === 'failed' ||
+          (interaction.errors && interaction.errors.length > 0)
+        ) {
+          throw new Error(
+            interaction.errors?.[0]?.message ||
+              'Gemini 3.8 Flash interaction failed.'
+          );
+        }
+
+        const text = extractInteractionText(interaction);
+        if (!text) {
+          throw new Error('Gemini 3.8 Flash returned an empty response.');
+        }
+
+        const parsed = parseBarnabyJson(text);
         slot.lastStatus = 'HEALTHY';
 
         return {
@@ -478,22 +586,25 @@ Student Input: "${params.userMessage}"`;
           retriesAttempted,
         };
       } catch (err: unknown) {
-        const status =
-          typeof err === 'object' && err !== null && 'status' in err
-            ? Number((err as { status?: number }).status)
-            : 0;
+        const errObj =
+          typeof err === 'object' && err !== null
+            ? (err as { status?: unknown; statusCode?: unknown })
+            : {};
+        const status = Number(errObj.status ?? errObj.statusCode ?? 0) || 0;
         const message = err instanceof Error ? err.message : String(err);
+        const lowerMessage = message.toLowerCase();
 
         const is429 =
           status === 429 ||
           message.includes('429') ||
-          message.toLowerCase().includes('quota') ||
-          message.toLowerCase().includes('rate');
+          lowerMessage.includes('quota') ||
+          lowerMessage.includes('rate');
         const isAuth =
           status === 401 ||
           status === 403 ||
-          message.toLowerCase().includes('api key') ||
-          message.toLowerCase().includes('permission');
+          lowerMessage.includes('api key') ||
+          lowerMessage.includes('api_key') ||
+          lowerMessage.includes('permission');
 
         if (is429) {
           slot.lastStatus = 'RATE_LIMITED_429';
@@ -509,7 +620,7 @@ Student Input: "${params.userMessage}"`;
         } else {
           slot.lastStatus = 'ERROR_500';
           slot.cooldownUntil = Date.now() + 15_000;
-          lastHttpStatus = 502;
+          lastHttpStatus = status === 400 || status === 404 ? status : 502;
           lastErrorMsg = message || 'Upstream Gemini service error.';
         }
 
