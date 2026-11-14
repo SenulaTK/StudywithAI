@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { BlockMath } from 'react-katex';
 import {
@@ -23,6 +23,11 @@ import {
   KeyRound,
   AlertTriangle,
   Trash2,
+  Mic,
+  MicOff,
+  Timer,
+  StickyNote,
+  Wand2,
 } from 'lucide-react';
 import { useStudyDeskStore, type WorkbookTab } from '@/lib/store';
 import {
@@ -32,9 +37,11 @@ import {
   type TutorMode,
 } from '@/lib/gemini';
 import { askBarnabyLocal } from '@/lib/localModel';
+import { generatePracticeQuestionForTopic } from '@/lib/syllabusGenerator';
 import { chiptuneAudio } from '@/lib/audio';
 import { ProfessorBarnaby } from '@/components/barnaby/ProfessorBarnaby';
 import { PersonaMenuStage } from '@/components/transitions/PersonaSchoolTransition';
+import { RichAcademicText } from '@/components/common/RichAcademicText';
 
 let workbookSeq = 0;
 function nextWorkbookSeq() {
@@ -105,8 +112,10 @@ export function WorkbookCanvas() {
     addTopicHint,
     removeTopicHint,
     addTopicQuestion,
+    syncTopicWithBarnabyResponse,
     recordQuizAnswer,
     appendDialogueTurn,
+    addStickyNote,
     awardXP,
   } = useStudyDeskStore();
 
@@ -116,11 +125,22 @@ export function WorkbookCanvas() {
   // Prompting & Gemini API state
   const [studentInput, setStudentInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isGeneratingQuestion, setIsGeneratingQuestion] = useState(false);
+  const [isListeningMic, setIsListeningMic] = useState(false);
   const [quickKeyInput, setQuickKeyInput] = useState('');
   const [apiError, setApiError] = useState<{
     code: string;
     message: string;
   } | null>(null);
+
+  // Timed Exam Simulator state
+  const [examModeActive, setExamModeActive] = useState(false);
+  const [examSubmitted, setExamSubmitted] = useState(false);
+  const [examSecondsLeft, setExamSecondsLeft] = useState(180);
+  const [examAnswers, setExamAnswers] = useState<Record<string, number>>({});
+  const [pinnedQuestionIds, setPinnedQuestionIds] = useState<
+    Record<string, boolean>
+  >({});
 
   // Hints & formula inline editor state
   const [hintsProgress, setHintsProgress] = useState<{
@@ -160,6 +180,22 @@ export function WorkbookCanvas() {
     keyUsed: 'KEY_1' | 'KEY_2' | 'KEY_3' | 'LOCAL_WEBGPU';
     trigger: number;
   } | null>(null);
+
+  // Timed Exam Countdown Timer
+  useEffect(() => {
+    if (!examModeActive || examSubmitted) return;
+    const timer = setInterval(() => {
+      setExamSecondsLeft((prev) => {
+        if (prev <= 1) {
+          setExamSubmitted(true);
+          chiptuneAudio.playSchoolBellChime();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [examModeActive, examSubmitted]);
 
   const topicId = activeNode?.id || '';
   const showFormulaEditor = Boolean(topicId && formulaEditorTopicId === topicId);
@@ -311,6 +347,25 @@ export function WorkbookCanvas() {
         trigger: replySeq,
       });
 
+      // Automatically sync new formula, hints, and generated quiz question back into the Topic & Whiteboard
+      syncTopicWithBarnabyResponse(activeNode.id, {
+        latexFormula: response.latexFormula,
+        latexCaption: response.latexCaption,
+        hintSteps: validHints,
+        quizQuestion: response.quizQuestion
+          ? {
+              id: `q-barnaby-${replySeq}`,
+              bloomsLevel:
+                response.quizQuestion.bloomsLevel || response.bloomsLevel,
+              question: response.quizQuestion.question,
+              options: response.quizQuestion.options,
+              correctIndex: response.quizQuestion.correctIndex,
+              socraticExplanation: response.quizQuestion.socraticExplanation,
+              xpReward: 50,
+            }
+          : undefined,
+      });
+
       appendDialogueTurn(activeNode.id, {
         id: `turn-barnaby-${replySeq}`,
         role: 'barnaby',
@@ -349,6 +404,147 @@ export function WorkbookCanvas() {
       }
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleGenerateAiQuestion = async () => {
+    if (!activeNode || isGeneratingQuestion) return;
+    setIsGeneratingQuestion(true);
+    try {
+      const ragChunks = backpackFiles
+        .filter((f) => f.subject === currentSubject)
+        .flatMap((f) => f.chunks);
+      const generated = await generatePracticeQuestionForTopic({
+        node: activeNode,
+        syllabusBoard,
+        ragContext: ragChunks,
+        aiEngineMode,
+        localModelId,
+        geminiHasKey,
+        onLocalProgress: (report) => {
+          setLocalModelState({
+            status: report.progress >= 100 ? 'ready' : 'loading',
+            progress: report.progress,
+            text: report.text,
+          });
+        },
+      });
+      syncTopicWithBarnabyResponse(activeNode.id, {
+        latexFormula: generated.latexFormula,
+        latexCaption: generated.latexCaption,
+        hintSteps: generated.hintSteps,
+        quizQuestion: generated.question,
+      });
+      chiptuneAudio.playMasteryFanfare();
+    } finally {
+      setIsGeneratingQuestion(false);
+    }
+  };
+
+  const handleStartTimedExam = () => {
+    if (!activeNode || activeNode.diagnosticQuestions.length === 0) return;
+    setExamAnswers({});
+    setExamSubmitted(false);
+    setExamSecondsLeft(Math.max(90, activeNode.diagnosticQuestions.length * 75));
+    setExamModeActive(true);
+    setActiveCallState('REVISION_TEST');
+    chiptuneAudio.playSchoolBellChime();
+  };
+
+  const handleSubmitTimedExam = () => {
+    if (!activeNode) return;
+    setExamSubmitted(true);
+    activeNode.diagnosticQuestions.forEach((q) => {
+      const chosen = examAnswers[q.id];
+      if (chosen !== undefined) {
+        recordQuizAnswer(q.id, activeNode.id, chosen, q.correctIndex, q.xpReward);
+      }
+    });
+    awardXP(100);
+    chiptuneAudio.playMasteryFanfare();
+  };
+
+  const handlePinQuestionToFlashcard = (q: {
+    id: string;
+    question: string;
+    options: string[];
+    correctIndex: number;
+    socraticExplanation: string;
+  }) => {
+    if (!activeNode || !currentSubject || pinnedQuestionIds[q.id]) return;
+    const correctAnswer = q.options[q.correctIndex] || '';
+    addStickyNote({
+      subject: currentSubject,
+      topicId: activeNode.id,
+      frontPrompt: q.question,
+      backAnswer: `Answer: ${correctAnswer}\n\nWhy: ${q.socraticExplanation}`,
+      color: 'coral',
+      rotationClass: '-rotate-1',
+      masteryStatus: 'WEAK_POINT',
+    });
+    setPinnedQuestionIds((prev) => ({ ...prev, [q.id]: true }));
+    chiptuneAudio.playPaperFlip();
+  };
+
+  const handleToggleVoiceMic = () => {
+    if (typeof window === 'undefined') return;
+    const SpeechRec =
+      (window as unknown as { SpeechRecognition?: new () => {
+        lang: string;
+        interimResults: boolean;
+        onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+        onend: (() => void) | null;
+        onerror: (() => void) | null;
+        start: () => void;
+      }; webkitSpeechRecognition?: new () => {
+        lang: string;
+        interimResults: boolean;
+        onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+        onend: (() => void) | null;
+        onerror: (() => void) | null;
+        start: () => void;
+      } }).SpeechRecognition ||
+      (window as unknown as { webkitSpeechRecognition?: new () => {
+        lang: string;
+        interimResults: boolean;
+        onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+        onend: (() => void) | null;
+        onerror: (() => void) | null;
+        start: () => void;
+      } }).webkitSpeechRecognition;
+
+    if (!SpeechRec) {
+      setApiError({
+        code: 'VOICE_UNSUPPORTED',
+        message:
+          'Browser voice dictation is supported in Chrome, Edge, and Safari.',
+      });
+      return;
+    }
+
+    if (isListeningMic) {
+      setIsListeningMic(false);
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRec();
+      recognition.lang = 'en-US';
+      recognition.interimResults = false;
+      setIsListeningMic(true);
+      recognition.onresult = (event) => {
+        const transcript = event.results?.[0]?.[0]?.transcript || '';
+        if (transcript) {
+          setStudentInput((prev) =>
+            prev ? `${prev} ${transcript}` : transcript
+          );
+        }
+      };
+      recognition.onend = () => setIsListeningMic(false);
+      recognition.onerror = () => setIsListeningMic(false);
+      recognition.start();
+    } catch {
+      setIsListeningMic(false);
     }
   };
 
@@ -420,6 +616,11 @@ export function WorkbookCanvas() {
     xpReward: number
   ) => {
     if (!activeNode) return;
+    if (examModeActive && !examSubmitted) {
+      setExamAnswers((prev) => ({ ...prev, [questionId]: optionIdx }));
+      chiptuneAudio.playPaperFlip();
+      return;
+    }
     recordQuizAnswer(questionId, activeNode.id, optionIdx, correctIndex, xpReward);
     if (optionIdx === correctIndex) {
       chiptuneAudio.playMasteryFanfare();
@@ -896,7 +1097,7 @@ export function WorkbookCanvas() {
                                 className="p-2.5 rounded-lg bg-[#F5EBE0]/75 border border-[#DFCEB2] leading-snug flex items-start justify-between gap-2"
                               >
                                 <span>
-                                  {idx + 1}. {hint}
+                                  {idx + 1}. <RichAcademicText text={hint} />
                                 </span>
                                 {!(
                                   latestBarnabySpeech?.hintSteps &&
@@ -949,9 +1150,52 @@ export function WorkbookCanvas() {
                   <div className="flex items-center justify-between flex-wrap gap-2 px-1">
                     <h3 className="text-sm font-bold font-serif text-[#1E293B] flex items-center gap-1.5">
                       <Sparkles className="w-4 h-4 text-[#10B981]" />
-                      Diagnostic Checkpoint Quiz
+                      {examModeActive
+                        ? 'Timed Exam Paper Simulator'
+                        : 'Diagnostic Checkpoint Quiz'}
                     </h3>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        id="generate-ai-quiz-btn"
+                        type="button"
+                        disabled={isGeneratingQuestion}
+                        onClick={handleGenerateAiQuestion}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#ECFDF5] hover:bg-[#D1FAE5] border border-[#10B981] text-xs font-bold text-[#065F46] cursor-pointer transition-colors"
+                      >
+                        <Wand2 className="w-3.5 h-3.5" />
+                        <span>
+                          {isGeneratingQuestion
+                            ? 'Generating...'
+                            : 'AI Question'}
+                        </span>
+                      </button>
+
+                      {activeNode.diagnosticQuestions.length > 0 && (
+                        <button
+                          id="toggle-timed-exam-btn"
+                          type="button"
+                          onClick={() => {
+                            if (examModeActive) {
+                              setExamModeActive(false);
+                              setExamSubmitted(false);
+                              setActiveCallState('IDLE');
+                            } else {
+                              handleStartTimedExam();
+                            }
+                          }}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-bold cursor-pointer transition-colors ${
+                            examModeActive
+                              ? 'bg-[#1A2E26] text-[#FDE047] border-[#1E293B]'
+                              : 'bg-[#FEF9C3] hover:bg-[#FDE047] text-[#1E293B] border-[#1E293B]'
+                          }`}
+                        >
+                          <Timer className="w-3.5 h-3.5" />
+                          <span>
+                            {examModeActive ? 'Exit Exam Mode' : 'Timed Exam'}
+                          </span>
+                        </button>
+                      )}
+
                       <button
                         id="open-quiz-builder-btn"
                         type="button"
@@ -971,6 +1215,86 @@ export function WorkbookCanvas() {
                       </span>
                     </div>
                   </div>
+
+                  {/* Timed Exam Simulator Banner & School Report Stamp */}
+                  {examModeActive && (
+                    <div className="rounded-xl border-2 border-[#1E293B] bg-[#FAF4E8] p-3.5 shadow-[3px_3px_0px_#1E293B] space-y-2.5">
+                      {!examSubmitted ? (
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 text-xs text-[#1E293B]">
+                            <span className="px-2.5 py-1 rounded-lg bg-[#EF4444] text-white font-mono font-bold flex items-center gap-1">
+                              <Timer className="w-3.5 h-3.5" />
+                              {String(Math.floor(examSecondsLeft / 60)).padStart(
+                                2,
+                                '0'
+                              )}
+                              :
+                              {String(examSecondsLeft % 60).padStart(2, '0')}
+                            </span>
+                            <span className="font-semibold">
+                              Exam in progress — explanations hidden until paper
+                              submission.
+                            </span>
+                          </div>
+                          <button
+                            id="submit-timed-exam-btn"
+                            type="button"
+                            onClick={handleSubmitTimedExam}
+                            className="px-3.5 py-1.5 rounded-lg bg-[#10B981] hover:bg-[#059669] text-white text-xs font-bold cursor-pointer shadow-[2px_2px_0px_#1E293B]"
+                          >
+                            Submit Exam Paper (+100 XP)
+                          </button>
+                        </div>
+                      ) : (
+                        (() => {
+                          const total = activeNode.diagnosticQuestions.length;
+                          const correct = activeNode.diagnosticQuestions.filter(
+                            (q) => examAnswers[q.id] === q.correctIndex
+                          ).length;
+                          const pct =
+                            total > 0 ? Math.round((correct / total) * 100) : 0;
+                          const grade =
+                            pct >= 90
+                              ? 'A*'
+                              : pct >= 80
+                                ? 'A'
+                                : pct >= 70
+                                  ? 'B'
+                                  : pct >= 60
+                                    ? 'C'
+                                    : pct >= 50
+                                      ? 'D'
+                                      : 'U';
+                          return (
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div className="flex items-center gap-3">
+                                <div className="px-3 py-1.5 rounded-xl border-2 border-[#991B1B] bg-[#FEE2E2] text-[#991B1B] font-serif font-extrabold text-base -rotate-3 shadow-xs">
+                                  GRADE {grade}
+                                </div>
+                                <div>
+                                  <div className="text-xs font-bold text-[#1E293B]">
+                                    Official School Report: {correct}/{total} (
+                                    {pct}%)
+                                  </div>
+                                  <div className="text-[11px] text-slate-600">
+                                    Review mark-scheme explanations below or pin
+                                    missed items to 3D flashcards.
+                                  </div>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={handleStartTimedExam}
+                                className="px-3 py-1.5 rounded-lg bg-[#1A2E26] text-[#FDE047] text-xs font-bold cursor-pointer"
+                              >
+                                Retake Timed Paper
+                              </button>
+                            </div>
+                          );
+                        })()
+                      )}
+                    </div>
+                  )}
 
                   {showQuizBuilder && (
                     <form
@@ -1070,14 +1394,21 @@ export function WorkbookCanvas() {
                         No diagnostic questions in {activeNode.code} yet
                       </p>
                       <p className="text-xs text-slate-600 max-w-md mx-auto">
-                        Use &ldquo;+ Add Question&rdquo; above to write a
-                        checkpoint question for this topic.
+                        Click &ldquo;AI Question&rdquo; above to let Professor
+                        Barnaby generate an exam checkpoint, or add your own.
                       </p>
                     </div>
                   ) : (
                     activeNode.diagnosticQuestions.map((q, qIdx) => {
-                      const chosenIdx = selectedAnswers[q.id];
+                      const chosenIdx =
+                        examModeActive && !examSubmitted
+                          ? examAnswers[q.id]
+                          : examModeActive && examSubmitted
+                            ? examAnswers[q.id] ?? selectedAnswers[q.id]
+                            : selectedAnswers[q.id];
                       const isAnswered = chosenIdx !== undefined;
+                      const showFeedback =
+                        isAnswered && (!examModeActive || examSubmitted);
                       const isCorrect = chosenIdx === q.correctIndex;
 
                       return (
@@ -1103,17 +1434,19 @@ export function WorkbookCanvas() {
                             </div>
                           </div>
 
-                          <p className="text-sm font-semibold text-[#1E293B] leading-snug">
-                            {q.question}
-                          </p>
+                          <div className="text-sm font-semibold text-[#1E293B] leading-snug">
+                            <RichAcademicText text={q.question} />
+                          </div>
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                             {q.options.map((opt, optIdx) => {
                               const isThisSelected = chosenIdx === optIdx;
                               const showRight =
-                                isAnswered && optIdx === q.correctIndex;
+                                showFeedback && optIdx === q.correctIndex;
                               const showWrong =
-                                isThisSelected && optIdx !== q.correctIndex;
+                                showFeedback &&
+                                isThisSelected &&
+                                optIdx !== q.correctIndex;
 
                               return (
                                 <button
@@ -1133,41 +1466,64 @@ export function WorkbookCanvas() {
                                       ? 'bg-[#10B981]/15 border-[#10B981] text-[#065F46] font-bold'
                                       : showWrong
                                         ? 'bg-[#EF4444]/15 border-[#EF4444] text-red-900'
-                                        : 'bg-white hover:bg-[#F5EBE0]/75 border-[#D4B996] text-slate-800'
+                                        : isThisSelected &&
+                                            examModeActive &&
+                                            !examSubmitted
+                                          ? 'bg-[#FEF9C3] border-[#1E293B] text-[#1E293B] font-bold'
+                                          : 'bg-white hover:bg-[#F5EBE0]/75 border-[#D4B996] text-slate-800'
                                   }`}
                                 >
                                   <span className="font-mono font-bold text-xs px-1.5 py-0.5 rounded bg-[#F5EBE0] border border-[#C8AE8D] shrink-0">
                                     {String.fromCharCode(65 + optIdx)}
                                   </span>
                                   <span className="flex-1 leading-snug">
-                                    {opt}
+                                    <RichAcademicText text={opt} />
                                   </span>
                                 </button>
                               );
                             })}
                           </div>
 
-                          {isAnswered && (
+                          {showFeedback && (
                             <div
-                              className={`p-3 rounded-xl border text-xs leading-relaxed flex items-start gap-2 ${
+                              className={`p-3 rounded-xl border text-xs leading-relaxed flex flex-wrap items-start justify-between gap-2 ${
                                 isCorrect
                                   ? 'bg-[#10B981]/10 border-[#10B981] text-[#065F46]'
                                   : 'bg-[#F59E0B]/15 border-[#F59E0B] text-amber-950'
                               }`}
                             >
-                              {isCorrect ? (
-                                <CheckCircle2 className="w-4 h-4 text-[#10B981] shrink-0 mt-0.5" />
-                              ) : (
-                                <XCircle className="w-4 h-4 text-[#EF4444] shrink-0 mt-0.5" />
-                              )}
-                              <div>
-                                <span className="font-bold mr-1">
-                                  {isCorrect
-                                    ? 'Mastery Verified!'
-                                    : 'Try Another Angle:'}
-                                </span>
-                                {q.socraticExplanation}
+                              <div className="flex items-start gap-2 flex-1 min-w-[200px]">
+                                {isCorrect ? (
+                                  <CheckCircle2 className="w-4 h-4 text-[#10B981] shrink-0 mt-0.5" />
+                                ) : (
+                                  <XCircle className="w-4 h-4 text-[#EF4444] shrink-0 mt-0.5" />
+                                )}
+                                <div>
+                                  <span className="font-bold mr-1">
+                                    {isCorrect
+                                      ? 'Mastery Verified!'
+                                      : 'Try Another Angle:'}
+                                  </span>
+                                  <RichAcademicText
+                                    text={q.socraticExplanation}
+                                  />
+                                </div>
                               </div>
+
+                              <button
+                                type="button"
+                                disabled={Boolean(pinnedQuestionIds[q.id])}
+                                onClick={() => handlePinQuestionToFlashcard(q)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white hover:bg-[#FEF08A] border border-[#1E293B] text-[#1E293B] text-xs font-bold cursor-pointer shrink-0"
+                                title="Pin this question to 3D Spaced Repetition Flashcards"
+                              >
+                                <StickyNote className="w-3 h-3" />
+                                <span>
+                                  {pinnedQuestionIds[q.id]
+                                    ? 'Pinned to 3D Cards!'
+                                    : 'Pin to 3D Cards'}
+                                </span>
+                              </button>
                             </div>
                           )}
                         </div>
@@ -1208,7 +1564,9 @@ export function WorkbookCanvas() {
                             </span>
                             <span>{turn.timestamp}</span>
                           </div>
-                          <p className="leading-relaxed">{turn.text}</p>
+                          <div className="leading-relaxed">
+                            <RichAcademicText text={turn.text} />
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1220,11 +1578,35 @@ export function WorkbookCanvas() {
         )}
       </div>
 
-      {/* Bottom Interactive Socratic / Feynman Input Bar */}
+      {/* Bottom Interactive Socratic / Feynman Input Bar + Spoken Voice Dictation */}
       <form
         onSubmit={handleSendToBarnaby}
         className="mt-5 pt-3 border-t-2 border-[#E6D5B8] sm:pl-3 flex items-center gap-2"
       >
+        <button
+          id="barnaby-voice-mic-btn"
+          type="button"
+          disabled={!activeNode || isLoading}
+          onClick={handleToggleVoiceMic}
+          title={
+            isListeningMic
+              ? 'Stop voice dictation'
+              : 'Speak your explanation aloud (Feynman / Socratic voice input)'
+          }
+          aria-label="Voice input microphone"
+          className={`p-2.5 rounded-xl border-2 transition-colors cursor-pointer shrink-0 ${
+            isListeningMic
+              ? 'bg-[#EF4444] text-white border-[#1E293B] animate-pulse'
+              : 'bg-[#FDFBF7] hover:bg-[#F5EBE0] text-[#1E293B] border-[#C8AE8D]'
+          } disabled:opacity-50`}
+        >
+          {isListeningMic ? (
+            <MicOff className="w-4 h-4" />
+          ) : (
+            <Mic className="w-4 h-4" />
+          )}
+        </button>
+
         <input
           id="barnaby-socratic-input"
           type="text"

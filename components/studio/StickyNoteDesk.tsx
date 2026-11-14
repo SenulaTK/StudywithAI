@@ -21,6 +21,7 @@ import { compileMathExpression } from '@/lib/mathParser';
 import { chiptuneAudio } from '@/lib/audio';
 import { storageAdapter, type StoredStickyNote } from '@/lib/storage';
 import { PersonaMenuStage } from '@/components/transitions/PersonaSchoolTransition';
+import { RichAcademicText } from '@/components/common/RichAcademicText';
 
 const STICKY_COLORS: Record<
   StoredStickyNote['color'],
@@ -212,6 +213,7 @@ export function StickyNoteDesk() {
     roadmapState.find((n) => n.id === activeTopicId) || null;
 
   const [flippedIds, setFlippedIds] = useState<Record<string, boolean>>({});
+  const [stickyFilter, setStickyFilter] = useState<'all' | 'due'>('all');
   const [showAddForm, setShowAddForm] = useState(false);
   const [newFront, setNewFront] = useState('');
   const [newBack, setNewBack] = useState('');
@@ -258,6 +260,16 @@ export function StickyNoteDesk() {
   const subjectStickies = currentSubject
     ? stickyNotes.filter((s) => s.subject === currentSubject)
     : [];
+
+  const dueStickies = subjectStickies.filter(
+    (s) =>
+      s.masteryStatus === 'WEAK_POINT' ||
+      s.masteryStatus === 'SPACED_DUE' ||
+      s.masteryStatus === 'NEW'
+  );
+
+  const visibleStickies =
+    stickyFilter === 'due' ? dueStickies : subjectStickies;
 
   const toggleFlip = (id: string) => {
     setFlippedIds((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -528,13 +540,38 @@ export function StickyNoteDesk() {
                 </div>
               ) : (
                 <>
-                  <p className="text-xs text-slate-700 font-medium px-0.5">
-                    Click any sticky note to flip 180° and grade your active
-                    recall.
-                  </p>
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-0.5">
+                    <p className="text-xs text-slate-700 font-medium">
+                      Click any sticky note to flip 180° and grade recall.
+                    </p>
+                    <div className="flex items-center gap-1 bg-[#E6D5B8] p-0.5 rounded-lg border border-[#C8AE8D]">
+                      <button
+                        type="button"
+                        onClick={() => setStickyFilter('all')}
+                        className={`px-2 py-0.5 rounded text-xs font-mono font-bold cursor-pointer ${
+                          stickyFilter === 'all'
+                            ? 'bg-[#1A2E26] text-[#FDE047]'
+                            : 'text-slate-700'
+                        }`}
+                      >
+                        All ({subjectStickies.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStickyFilter('due')}
+                        className={`px-2 py-0.5 rounded text-xs font-mono font-bold cursor-pointer ${
+                          stickyFilter === 'due'
+                            ? 'bg-[#1A2E26] text-[#FDE047]'
+                            : 'text-slate-700'
+                        }`}
+                      >
+                        Due / Weak ({dueStickies.length})
+                      </button>
+                    </div>
+                  </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
-                    {subjectStickies.map((note) => {
+                    {visibleStickies.map((note) => {
                       const isFlipped = !!flippedIds[note.id];
                       const palette = STICKY_COLORS[note.color];
 
@@ -574,9 +611,9 @@ export function StickyNoteDesk() {
                                 </span>
                               </div>
 
-                              <p className="text-sm font-bold text-[#1E293B] leading-snug line-clamp-3">
-                                {note.frontPrompt}
-                              </p>
+                              <div className="text-sm font-bold text-[#1E293B] leading-snug line-clamp-3">
+                                <RichAcademicText text={note.frontPrompt} />
+                              </div>
 
                               <div className="text-xs font-mono text-slate-700 flex items-center justify-between pt-1.5 border-t border-black/10">
                                 <span>
@@ -609,9 +646,9 @@ export function StickyNoteDesk() {
                                 </button>
                               </div>
 
-                              <p className="text-xs font-medium text-[#1E293B] leading-relaxed overflow-y-auto pr-1">
-                                {note.backAnswer}
-                              </p>
+                              <div className="text-xs font-medium text-[#1E293B] leading-relaxed overflow-y-auto pr-1 whitespace-pre-line">
+                                <RichAcademicText text={note.backAnswer} />
+                              </div>
 
                               {/* Tag Mastery Buttons */}
                               <div

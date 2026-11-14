@@ -124,6 +124,16 @@ interface StudyDeskStore {
     title: string;
     subtitle: string;
   }) => void;
+  addSyllabusTopics: (subject: string, nodes: RoadmapTopicNode[]) => void;
+  syncTopicWithBarnabyResponse: (
+    topicId: string,
+    patch: {
+      latexFormula?: string;
+      latexCaption?: string;
+      hintSteps?: string[];
+      quizQuestion?: DiagnosticQuestion;
+    }
+  ) => void;
   deleteTopic: (topicId: string) => void;
   setActiveTopic: (topicId: string) => void;
   updateTopicFormula: (
@@ -410,6 +420,58 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
         lastStudyDate: streak.lastStudyDate,
       };
     }),
+
+  addSyllabusTopics: (subject, nodes) =>
+    set((state) => {
+      if (!subject || nodes.length === 0) return state;
+      const streak = computeNextStreak(state.lastStudyDate, state.streakCount);
+      const firstId = nodes[0]?.id || state.activeTopicId;
+      return {
+        roadmapState: [...state.roadmapState, ...nodes],
+        activeTopicId: firstId,
+        workbookTab: 'lesson',
+        userXP: state.userXP + 40,
+        streakCount: streak.streakCount,
+        lastStudyDate: streak.lastStudyDate,
+      };
+    }),
+
+  syncTopicWithBarnabyResponse: (topicId, patch) =>
+    set((state) => ({
+      roadmapState: state.roadmapState.map((t) => {
+        if (t.id !== topicId) return t;
+        const nextLatex =
+          patch.latexFormula && patch.latexFormula.trim()
+            ? patch.latexFormula.trim()
+            : t.coreLatex;
+        const nextCaption =
+          patch.latexCaption && patch.latexCaption.trim()
+            ? patch.latexCaption.trim()
+            : t.coreLatexCaption;
+        const nextHints =
+          patch.hintSteps && patch.hintSteps.length > 0 && t.initialHints.length === 0
+            ? patch.hintSteps
+            : t.initialHints;
+        const alreadyHasQ =
+          patch.quizQuestion &&
+          t.diagnosticQuestions.some(
+            (q) =>
+              q.question.toLowerCase() ===
+              patch.quizQuestion!.question.toLowerCase()
+          );
+        const nextQuestions =
+          patch.quizQuestion && !alreadyHasQ
+            ? [...t.diagnosticQuestions, patch.quizQuestion]
+            : t.diagnosticQuestions;
+        return {
+          ...t,
+          coreLatex: nextLatex,
+          coreLatexCaption: nextCaption,
+          initialHints: nextHints,
+          diagnosticQuestions: nextQuestions,
+        };
+      }),
+    })),
 
   deleteTopic: (topicId) =>
     set((state) => {

@@ -22,6 +22,14 @@ export interface KeySlotStatus {
   cooldownUntil: number | null;
 }
 
+export interface BarnabyGeneratedQuizItem {
+  question: string;
+  options: string[];
+  correctIndex: number;
+  socraticExplanation: string;
+  bloomsLevel?: BloomsLevel;
+}
+
 export interface BarnabyResponse {
   reply: string;
   bloomsLevel: BloomsLevel;
@@ -29,6 +37,7 @@ export interface BarnabyResponse {
   latexFormula?: string;
   latexCaption?: string;
   hintSteps?: string[];
+  quizQuestion?: BarnabyGeneratedQuizItem;
   keyUsed: 'KEY_1' | 'KEY_2' | 'KEY_3' | 'LOCAL_WEBGPU';
   retriesAttempted: number;
 }
@@ -68,7 +77,7 @@ const BARNABY_RESPONSE_SCHEMA = {
     reply: {
       type: 'string',
       description:
-        'Main Socratic explanation and encouragement (2-4 concise sentences, natural English only).',
+        'Main Socratic explanation and encouragement (2-4 concise sentences, natural English only). You may use $...$ for inline KaTeX math.',
     },
     bloomsLevel: {
       type: 'string',
@@ -99,6 +108,27 @@ const BARNABY_RESPONSE_SCHEMA = {
       type: 'array',
       items: { type: 'string' },
       description: 'Optional 1-3 step-by-step study nudges.',
+    },
+    quizQuestion: {
+      type: 'object',
+      description:
+        'Optional 4-option multiple choice check-for-understanding question for the student.',
+      properties: {
+        question: { type: 'string' },
+        options: {
+          type: 'array',
+          items: { type: 'string' },
+        },
+        correctIndex: {
+          type: 'integer',
+          description: '0-based index of the correct option (0 to 3).',
+        },
+        socraticExplanation: {
+          type: 'string',
+          description: 'Why the correct option holds from first principles.',
+        },
+      },
+      required: ['question', 'options', 'correctIndex', 'socraticExplanation'],
     },
   },
   required: ['reply', 'bloomsLevel', 'socraticFollowUp'],
@@ -152,7 +182,7 @@ CORE PEDAGOGICAL DIRECTIVES:
 1. Always act as a supportive, encouraging Socratic tutor grounded in Cognitive Load Theory, Dual Coding Theory, and Gamified Active Mastery.
 2. Guide students through diagnostic steps instead of dumping final answers. Ask one incisive, scaffolded guiding question at the end of every turn.
 3. Scaffold your explanations and questions explicitly according to Bloom's Taxonomy (Remember -> Understand -> Apply -> Analyze -> Evaluate -> Create).
-4. Keep explanations crisp, structured, and vivid. Reference concrete intuitions and precision where appropriate.
+4. Keep explanations crisp, structured, and vivid. Use $...$ for inline LaTeX math symbols when referencing variables or equations in prose.
 5. CRITICAL SPEECH RULE: Output ONLY clean, natural, articulate human English prose. NEVER write literal owl sound effects or robotic noises into the written text (your Web Audio synthesizer handles the chiptune voice separately).
 
 Respond in valid JSON matching this schema:
@@ -162,7 +192,13 @@ Respond in valid JSON matching this schema:
   "socraticFollowUp": "A specific diagnostic question prompting the student's next cognitive step.",
   "latexFormula": "Optional KaTeX string (without surrounding $ signs) illustrating the core equation if relevant to the topic.",
   "latexCaption": "Short label for the paperclipped formula card.",
-  "hintSteps": ["Step 1 subtle nudge", "Step 2 intermediate bridge", "Step 3 structural check"]
+  "hintSteps": ["Step 1 subtle nudge", "Step 2 intermediate bridge", "Step 3 structural check"],
+  "quizQuestion": {
+    "question": "Check-for-understanding question stem",
+    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "correctIndex": 0,
+    "socraticExplanation": "Brief explanation of why this option is correct"
+  }
 }`;
 
 export function rankRelevantRagChunks(
@@ -560,6 +596,39 @@ Student Input: "${params.userMessage}"`;
         const parsed = parseBarnabyJson(text);
         slot.lastStatus = 'HEALTHY';
 
+        const rawQuiz =
+          parsed.quizQuestion &&
+          typeof parsed.quizQuestion === 'object' &&
+          !Array.isArray(parsed.quizQuestion)
+            ? (parsed.quizQuestion as Record<string, unknown>)
+            : null;
+        const validOptions =
+          rawQuiz && Array.isArray(rawQuiz.options)
+            ? rawQuiz.options
+                .filter((o): o is string => typeof o === 'string' && o.trim().length > 0)
+                .slice(0, 4)
+            : [];
+        const parsedQuizQuestion: BarnabyGeneratedQuizItem | undefined =
+          rawQuiz &&
+          typeof rawQuiz.question === 'string' &&
+          rawQuiz.question.trim().length > 0 &&
+          validOptions.length >= 2
+            ? {
+                question: rawQuiz.question.trim(),
+                options: validOptions,
+                correctIndex: Math.min(
+                  Math.max(0, Number(rawQuiz.correctIndex) || 0),
+                  validOptions.length - 1
+                ),
+                socraticExplanation:
+                  typeof rawQuiz.socraticExplanation === 'string' &&
+                  rawQuiz.socraticExplanation.trim()
+                    ? rawQuiz.socraticExplanation.trim()
+                    : 'Verified from topic principles.',
+                bloomsLevel: this.validateBlooms(parsed.bloomsLevel),
+              }
+            : undefined;
+
         return {
           reply:
             typeof parsed.reply === 'string' && parsed.reply.trim()
@@ -582,6 +651,7 @@ Student Input: "${params.userMessage}"`;
           hintSteps: Array.isArray(parsed.hintSteps)
             ? parsed.hintSteps.filter((h: unknown) => typeof h === 'string')
             : undefined,
+          quizQuestion: parsedQuizQuestion,
           keyUsed: slot.id,
           retriesAttempted,
         };

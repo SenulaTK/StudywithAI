@@ -13,6 +13,7 @@ import {
 import { useStudyDeskStore } from '@/lib/store';
 import { chiptuneAudio } from '@/lib/audio';
 import type { BloomsLevel } from '@/lib/gemini';
+import { RichAcademicText } from '@/components/common/RichAcademicText';
 
 export type BarnabyCostume =
   | 'scholar'
@@ -676,34 +677,66 @@ export function ProfessorBarnaby({
                       : 'Desk Standby'}
                 </span>
                 {speechText && (
-                  <button
-                    id="barnaby-replay-voice-btn"
-                    type="button"
-                    onClick={replaySpeech}
-                    className="text-xs font-mono text-slate-700 hover:text-[#1A2E26] flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#E6D5B8]/60 hover:bg-[#E6D5B8] transition-colors cursor-pointer"
-                    title="Replay Scroll & 8-Bit Chiptune Audio"
-                  >
-                    <RotateCw className="w-3 h-3" />
-                    Replay
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (
+                          typeof window === 'undefined' ||
+                          !('speechSynthesis' in window)
+                        ) {
+                          return;
+                        }
+                        window.speechSynthesis.cancel();
+                        const cleanSpeech = `${speechText} ${
+                          socraticQuestion ? `Question: ${socraticQuestion}` : ''
+                        }`
+                          .replace(/\$\$?([^$]+)\$\$?/g, '$1')
+                          .replace(/\\[a-zA-Z]+/g, ' ');
+                        const utter = new SpeechSynthesisUtterance(cleanSpeech);
+                        utter.rate = 1.02;
+                        utter.pitch = 1.05;
+                        window.speechSynthesis.speak(utter);
+                      }}
+                      className="text-xs font-mono text-slate-700 hover:text-[#1A2E26] flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#E6D5B8]/60 hover:bg-[#E6D5B8] transition-colors cursor-pointer"
+                      title="Read Aloud with Browser Voice (TTS)"
+                    >
+                      <Volume2 className="w-3 h-3" />
+                      Speak
+                    </button>
+                    <button
+                      id="barnaby-replay-voice-btn"
+                      type="button"
+                      onClick={replaySpeech}
+                      className="text-xs font-mono text-slate-700 hover:text-[#1A2E26] flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#E6D5B8]/60 hover:bg-[#E6D5B8] transition-colors cursor-pointer"
+                      title="Replay Scroll & 8-Bit Chiptune Audio"
+                    >
+                      <RotateCw className="w-3 h-3" />
+                      Replay
+                    </button>
+                  </div>
                 )}
               </div>
 
-              {/* Clean, natural human English prose (NEVER literal beep-boop text) */}
+              {/* Clean, natural human English prose with KaTeX math support */}
               {speechText ? (
-                <p
+                <div
                   aria-live="polite"
                   className="text-sm leading-relaxed text-[#1E293B] font-normal"
                 >
-                  {displayedText}
-                  {isSpeaking && (
-                    <span className="inline-block w-1.5 h-4 ml-0.5 bg-[#10B981] animate-pulse align-middle" />
+                  {isSpeaking ? (
+                    <>
+                      {displayedText}
+                      <span className="inline-block w-1.5 h-4 ml-0.5 bg-[#10B981] animate-pulse align-middle" />
+                    </>
+                  ) : (
+                    <RichAcademicText text={speechText} />
                   )}
-                </p>
+                </div>
               ) : (
                 <p className="text-xs sm:text-sm leading-relaxed text-slate-600">
                   Desk is clean and ready. Open a notebook topic and ask a
-                  question below once your Gemini API key is connected.
+                  question below once your Gemini API key or Local WebGPU is active.
                 </p>
               )}
 
@@ -713,9 +746,9 @@ export function ProfessorBarnaby({
                   <span className="px-2 py-0.5 rounded bg-[#1A2E26] text-[#FDE047] text-xs font-mono font-bold uppercase shrink-0 mt-0.5">
                     Prompt
                   </span>
-                  <p className="text-xs sm:text-sm font-semibold text-[#1A2E26] italic leading-snug">
-                    &ldquo;{socraticQuestion}&rdquo;
-                  </p>
+                  <div className="text-xs sm:text-sm font-semibold text-[#1A2E26] italic leading-snug">
+                    &ldquo;<RichAcademicText text={socraticQuestion} />&rdquo;
+                  </div>
                 </div>
               )}
             </motion.div>

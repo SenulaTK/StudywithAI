@@ -3,13 +3,14 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { BlockMath } from 'react-katex';
-import { RotateCw, Presentation } from 'lucide-react';
+import { RotateCw, Presentation, Volume2 } from 'lucide-react';
 import type {
   ActiveCallState,
   RoadmapTopicNode,
   WorkbookDialogueTurn,
 } from '@/lib/store';
 import { chiptuneAudio } from '@/lib/audio';
+import { RichAcademicText } from '@/components/common/RichAcademicText';
 
 interface TeachingBeat {
   id: string;
@@ -556,19 +557,51 @@ export function WhiteboardTeachingStage({
           )}
 
           {activeNode && (
-            <button
-              id="whiteboard-replay-teaching-btn"
-              type="button"
-              onClick={() => {
-                setReplayCount((c) => c + 1);
-                chiptuneAudio.playPaperFlip();
-              }}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white hover:bg-[#FDE047]/50 border border-[#CBD5E1] text-xs font-mono font-bold text-[#1E293B] cursor-pointer transition-colors"
-              title="Replay owl teaching animation"
-            >
-              <RotateCw className="w-3 h-3" />
-              Replay
-            </button>
+            <>
+              <button
+                id="whiteboard-voice-lecture-btn"
+                type="button"
+                onClick={() => {
+                  setReplayCount((c) => c + 1);
+                  chiptuneAudio.playPaperFlip();
+                  if (
+                    typeof window !== 'undefined' &&
+                    'speechSynthesis' in window
+                  ) {
+                    window.speechSynthesis.cancel();
+                    const spokenSteps = beats
+                      .map((b) =>
+                        `${b.label}: ${b.content}`
+                          .replace(/\$\$?([^$]+)\$\$?/g, '$1')
+                          .replace(/\\[a-zA-Z]+/g, ' ')
+                      )
+                      .join('. ');
+                    const utter = new SpeechSynthesisUtterance(spokenSteps);
+                    utter.rate = 1.0;
+                    utter.pitch = 1.04;
+                    window.speechSynthesis.speak(utter);
+                  }
+                }}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#ECFDF5] hover:bg-[#D1FAE5] border border-[#10B981] text-xs font-mono font-bold text-[#065F46] cursor-pointer transition-colors"
+                title="Listen to Barnaby narrate the whiteboard steps aloud"
+              >
+                <Volume2 className="w-3 h-3" />
+                Speak
+              </button>
+              <button
+                id="whiteboard-replay-teaching-btn"
+                type="button"
+                onClick={() => {
+                  setReplayCount((c) => c + 1);
+                  chiptuneAudio.playPaperFlip();
+                }}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white hover:bg-[#FDE047]/50 border border-[#CBD5E1] text-xs font-mono font-bold text-[#1E293B] cursor-pointer transition-colors"
+                title="Replay owl teaching animation"
+              >
+                <RotateCw className="w-3 h-3" />
+                Replay
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -683,9 +716,9 @@ export function WhiteboardTeachingStage({
                         >
                           {beat.label}
                         </span>
-                        <p className="text-xs text-[#1E293B] leading-relaxed line-clamp-3">
-                          {beat.content}
-                        </p>
+                        <div className="text-xs text-[#1E293B] leading-relaxed line-clamp-3">
+                          <RichAcademicText text={beat.content} />
+                        </div>
                       </div>
                     )}
                   </motion.div>

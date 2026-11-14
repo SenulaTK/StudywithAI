@@ -24,6 +24,8 @@ import {
   Plus,
   Trash2,
   AlertTriangle,
+  Search,
+  Share2,
 } from 'lucide-react';
 import {
   useStudyDeskStore,
@@ -37,6 +39,7 @@ import {
   loadLocalModel,
   unloadLocalModel,
 } from '@/lib/localModel';
+import { generateSyllabusTopicsWithAI } from '@/lib/syllabusGenerator';
 import { storageAdapter } from '@/lib/storage';
 import { PersonaMenuStage } from '@/components/transitions/PersonaSchoolTransition';
 
@@ -77,7 +80,10 @@ export function DeskHeader() {
     quizCompletedIds,
     selectedAnswers,
     createNotebook,
+    addSyllabusTopics,
     setSubject,
+    setActiveTopic,
+    setStudioTab,
     setActiveCallState,
     setGeminiHasKey,
     setAiEngineMode,
@@ -88,12 +94,17 @@ export function DeskHeader() {
     panToRight,
     panToOverview,
     setAudioMuted,
+    awardXP,
     resetAllData,
     hydrateFromArchive,
   } = useStudyDeskStore();
 
   const [secondsLeft, setSecondsLeft] = useState(25 * 60);
   const [pomodoroRunning, setPomodoroRunning] = useState(false);
+
+  // Global search modal state (Ctrl+K / Cmd+K)
+  const [showSearchModal, setShowSearchModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Locker modal state
   const [showVaultModal, setShowVaultModal] = useState(false);
@@ -110,22 +121,31 @@ export function DeskHeader() {
   const [showCreateNotebook, setShowCreateNotebook] = useState(false);
   const [newSubjectName, setNewSubjectName] = useState('');
   const [newSubjectBoard, setNewSubjectBoard] = useState('');
+  const [autoGenerateModalSyllabus, setAutoGenerateModalSyllabus] =
+    useState(false);
+  const [isCreatingSyllabus, setIsCreatingSyllabus] = useState(false);
 
   const [archiveToast, setArchiveToast] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!showVaultModal && !showCreateNotebook) return;
     const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setShowSearchModal((prev) => !prev);
+        chiptuneAudio.playPaperFlip();
+        return;
+      }
       if (e.key === 'Escape') {
         setShowVaultModal(false);
         setShowCreateNotebook(false);
+        setShowSearchModal(false);
         setConfirmResetOpen(false);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [showVaultModal, showCreateNotebook]);
+  }, []);
 
   useEffect(() => {
     if (!pomodoroRunning) return;
@@ -134,6 +154,8 @@ export function DeskHeader() {
         if (prev <= 1) {
           setPomodoroRunning(false);
           setActiveCallState('IDLE');
+          awardXP(100);
+          chiptuneAudio.playSchoolBellChime();
           chiptuneAudio.playMasteryFanfare();
           return 25 * 60;
         }
@@ -141,7 +163,7 @@ export function DeskHeader() {
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [pomodoroRunning, setActiveCallState]);
+  }, [pomodoroRunning, setActiveCallState, awardXP]);
 
   const showToast = (msg: string, ms = 3500) => {
     setArchiveToast(msg);
@@ -201,14 +223,77 @@ export function DeskHeader() {
     setCustomKeyInputs(savedCustom);
   };
 
-  const handleCreateNotebookSubmit = (e: React.FormEvent) => {
+  const handleCreateNotebookSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newSubjectName.trim()) return;
+    const cleanName = newSubjectName.trim();
+    const cleanBoard = newSubjectBoard.trim();
+    if (!cleanName || isCreatingSyllabus) return;
     chiptuneAudio.playSchoolBellChime();
-    createNotebook(newSubjectName, newSubjectBoard);
+    createNotebook(cleanName, cleanBoard);
+    if (autoGenerateModalSyllabus) {
+      setIsCreatingSyllabus(true);
+      try {
+        const nodes = await generateSyllabusTopicsWithAI({
+          subject: cleanName,
+          syllabusBoard: cleanBoard,
+          aiEngineMode,
+          localModelId,
+          geminiHasKey,
+          onLocalProgress: (report) => {
+            setLocalModelState({
+              status: report.progress >= 100 ? 'ready' : 'loading',
+              progress: report.progress,
+              text: report.text,
+            });
+          },
+        });
+        addSyllabusTopics(cleanName, nodes);
+      } finally {
+        setIsCreatingSyllabus(false);
+      }
+    }
     setNewSubjectName('');
     setNewSubjectBoard('');
     setShowCreateNotebook(false);
+  };
+
+  const handleExportTeacherCartridge = async () => {
+    const cleanRoadmap = roadmapState.map((n) => ({
+      ...n,
+      status: 'UNLOCKED' as const,
+      weakPoint: false,
+      spacedDue: false,
+    }));
+    const topicBadges: Record<string, string> = {};
+    cleanRoadmap.forEach((n) => {
+      topicBadges[n.id] = 'UNLOCKED';
+    });
+    const cleanStickies = stickyNotes.map((s) => ({
+      ...s,
+      masteryStatus: 'NEW' as const,
+      intervalDays: 1,
+      easeFactor: 2.5,
+    }));
+    await storageAdapter.exportDeskArchive({
+      formatVersion: '2.0.0-desk',
+      exportedAt: new Date().toISOString(),
+      userXP: 0,
+      streakCount: 0,
+      lastStudyDate: null,
+      currentSubject,
+      syllabusBoard,
+      activeTopicId,
+      subjects,
+      roadmapState: cleanRoadmap,
+      workbookDialogues: {},
+      quizCompletedIds: {},
+      selectedAnswers: {},
+      topicBadges,
+      stickyNotes: cleanStickies,
+      backpackFiles,
+      cornellNotes: Object.values(cornellNotes),
+    });
+    showToast('Exported shareable Teacher Lesson Cartridge (.desk)!');
   };
 
   const handleExportDesk = async () => {
@@ -539,6 +624,21 @@ export function DeskHeader() {
             </span>
           </div>
 
+          {/* Global Search Button (Ctrl+K) */}
+          <button
+            id="open-global-search-btn"
+            type="button"
+            onClick={() => setShowSearchModal(true)}
+            aria-label="Search Desk (Ctrl+K)"
+            title="Search Topics, Notes, Flashcards & Files (Ctrl+K)"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#FDFBF7] border border-[#B89972] text-[#1A2E26] hover:bg-[#F5EBE0] text-xs font-bold transition-colors cursor-pointer"
+          >
+            <Search className="w-3.5 h-3.5 text-[#1A2E26]" />
+            <span className="hidden xl:inline font-mono text-[11px] text-slate-600">
+              Ctrl+K
+            </span>
+          </button>
+
           {/* Audio Toggle */}
           <button
             id="toggle-chiptune-audio-btn"
@@ -616,7 +716,7 @@ export function DeskHeader() {
             >
               <div className="flex items-center justify-between border-b border-[#D4B996] pb-3">
                 <h2 className="text-lg font-bold font-serif">
-                  Create Blank Notebook
+                  Create Study Notebook
                 </h2>
                 <button
                   type="button"
@@ -641,7 +741,7 @@ export function DeskHeader() {
                     type="text"
                     required
                     autoFocus
-                    placeholder="Enter notebook title"
+                    placeholder="e.g., A-Level Physics, AP Biology, World History"
                     value={newSubjectName}
                     onChange={(e) => setNewSubjectName(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl bg-white border-2 border-[#C8AE8D] text-xs sm:text-sm focus:outline-none focus:border-[#1A2E26]"
@@ -658,12 +758,27 @@ export function DeskHeader() {
                   <input
                     id="new-notebook-board"
                     type="text"
-                    placeholder="Optional course code or syllabus"
+                    placeholder="e.g., Edexcel 9PH0, IB HL, GCSE"
                     value={newSubjectBoard}
                     onChange={(e) => setNewSubjectBoard(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl bg-white border-2 border-[#C8AE8D] text-xs sm:text-sm focus:outline-none focus:border-[#1A2E26]"
                   />
                 </div>
+
+                <label className="flex items-start gap-2.5 p-2.5 rounded-xl bg-[#F5EBE0] border border-[#D4B996] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={autoGenerateModalSyllabus}
+                    onChange={(e) =>
+                      setAutoGenerateModalSyllabus(e.target.checked)
+                    }
+                    className="mt-0.5 accent-[#1A2E26]"
+                  />
+                  <span className="text-xs text-[#1E293B] leading-snug">
+                    <strong>Auto-generate 4-unit syllabus &amp; whiteboard formulas</strong>{' '}
+                    (seeds topics, Socratic prompts, and diagnostic quizzes automatically)
+                  </span>
+                </label>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2">
@@ -677,9 +792,10 @@ export function DeskHeader() {
                 <button
                   id="confirm-create-notebook-btn"
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-[#1A2E26] hover:bg-[#243F35] text-[#FDFBF7] text-xs font-bold border border-[#1E293B] shadow-[2px_2px_0px_#FDE047] cursor-pointer"
+                  disabled={isCreatingSyllabus}
+                  className="px-4 py-2 rounded-xl bg-[#1A2E26] hover:bg-[#243F35] disabled:opacity-60 text-[#FDFBF7] text-xs font-bold border border-[#1E293B] shadow-[2px_2px_0px_#FDE047] cursor-pointer"
                 >
-                  Create Notebook
+                  {isCreatingSyllabus ? 'Building Syllabus...' : 'Create Notebook'}
                 </button>
               </div>
             </motion.form>
@@ -1002,7 +1118,17 @@ export function DeskHeader() {
                         className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#10B981] hover:bg-[#059669] text-white text-xs font-bold cursor-pointer"
                       >
                         <Download className="w-4 h-4" />
-                        Export Backup (.desk)
+                        Export Full Backup (.desk)
+                      </button>
+                      <button
+                        id="export-teacher-cartridge-btn"
+                        type="button"
+                        onClick={handleExportTeacherCartridge}
+                        title="Export clean Teacher Lesson Cartridge without personal XP or chat history"
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#1A2E26] hover:bg-[#243F35] text-[#FDE047] border border-[#1E293B] text-xs font-bold cursor-pointer"
+                      >
+                        <Share2 className="w-4 h-4" />
+                        Export Teacher Lesson Cartridge (.desk)
                       </button>
                       <button
                         id="import-desk-archive-btn"
@@ -1011,7 +1137,7 @@ export function DeskHeader() {
                         className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#F5EBE0] hover:bg-[#E6D5B8] text-[#1E293B] border border-[#C8AE8D] text-xs font-bold cursor-pointer"
                       >
                         <Upload className="w-4 h-4" />
-                        Restore Backup (.desk)
+                        Restore / Load Cartridge (.desk)
                       </button>
                       <input
                         ref={fileInputRef}
@@ -1071,6 +1197,231 @@ export function DeskHeader() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Global Search Modal (Ctrl+K / Cmd+K) */}
+      <AnimatePresence>
+        {showSearchModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/55 backdrop-blur-xs flex items-start justify-center pt-16 p-4"
+            onClick={() => setShowSearchModal(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: -12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: -10 }}
+              onClick={(e) => e.stopPropagation()}
+              className="workbook-paper-surface border-2 border-[#1E293B] rounded-2xl max-w-xl w-full p-4 shadow-[8px_8px_0px_#1E293B] text-[#1E293B] space-y-3 max-h-[80vh] flex flex-col"
+            >
+              <div className="flex items-center gap-2 border-b border-[#D4B996] pb-2.5">
+                <Search className="w-4 h-4 text-[#1A2E26] shrink-0" />
+                <input
+                  type="text"
+                  autoFocus
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search topics, formulas, 3D flashcards, Cornell notes, or files..."
+                  className="flex-1 bg-transparent text-xs sm:text-sm text-[#1E293B] placeholder:text-slate-500 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowSearchModal(false)}
+                  className="px-2 py-0.5 rounded bg-[#E6D5B8] hover:bg-[#D4B996] text-[11px] font-mono font-bold cursor-pointer"
+                >
+                  ESC
+                </button>
+              </div>
+
+              <div className="overflow-y-auto space-y-2 pr-1 max-h-[60vh]">
+                {(() => {
+                  const q = searchQuery.trim().toLowerCase();
+                  const topicHits = roadmapState.filter((t) =>
+                    !q
+                      ? true
+                      : t.title.toLowerCase().includes(q) ||
+                        t.subtitle.toLowerCase().includes(q) ||
+                        t.subject.toLowerCase().includes(q) ||
+                        t.coreLatex.toLowerCase().includes(q) ||
+                        t.coreLatexCaption.toLowerCase().includes(q)
+                  );
+                  const cardHits = stickyNotes.filter((n) =>
+                    !q
+                      ? false
+                      : n.frontPrompt.toLowerCase().includes(q) ||
+                        n.backAnswer.toLowerCase().includes(q) ||
+                        n.subject.toLowerCase().includes(q)
+                  );
+                  const cornellHits = Object.values(cornellNotes).filter((c) =>
+                    !q
+                      ? false
+                      : c.cues.toLowerCase().includes(q) ||
+                        c.notes.toLowerCase().includes(q) ||
+                        c.summary.toLowerCase().includes(q) ||
+                        c.subject.toLowerCase().includes(q)
+                  );
+                  const fileHits = backpackFiles.filter((f) =>
+                    !q
+                      ? false
+                      : f.name.toLowerCase().includes(q) ||
+                        f.chunks.some((ch) => ch.toLowerCase().includes(q))
+                  );
+
+                  if (
+                    topicHits.length === 0 &&
+                    cardHits.length === 0 &&
+                    cornellHits.length === 0 &&
+                    fileHits.length === 0
+                  ) {
+                    return (
+                      <div className="py-8 text-center text-xs text-slate-600">
+                        No matching study items found across your notebooks.
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <>
+                      {topicHits.length > 0 && (
+                        <div className="space-y-1">
+                          <div className="text-[10px] font-mono uppercase tracking-wider font-bold text-slate-500">
+                            Whiteboard Topics ({topicHits.length})
+                          </div>
+                          {topicHits.slice(0, 8).map((t) => (
+                            <button
+                              key={t.id}
+                              type="button"
+                              onClick={() => {
+                                setSubject(t.subject);
+                                setActiveTopic(t.id);
+                                setShowSearchModal(false);
+                              }}
+                              className="w-full text-left p-2.5 rounded-xl bg-white/90 hover:bg-[#F5EBE0] border border-[#D4B996] flex items-center justify-between gap-2 cursor-pointer"
+                            >
+                              <div className="min-w-0">
+                                <div className="text-xs font-bold text-[#1E293B] truncate">
+                                  {t.title}
+                                </div>
+                                <div className="text-[11px] text-slate-600 truncate">
+                                  {t.subject} • {t.coreLatexCaption || t.coreLatex}
+                                </div>
+                              </div>
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#1A2E26] text-[#FDE047] shrink-0">
+                                Open Topic
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {cardHits.length > 0 && (
+                        <div className="space-y-1 pt-1">
+                          <div className="text-[10px] font-mono uppercase tracking-wider font-bold text-slate-500">
+                            3D Sticky Flashcards ({cardHits.length})
+                          </div>
+                          {cardHits.slice(0, 6).map((card) => (
+                            <button
+                              key={card.id}
+                              type="button"
+                              onClick={() => {
+                                if (card.subject) setSubject(card.subject);
+                                setStudioTab('stickies');
+                                panToRight();
+                                setShowSearchModal(false);
+                              }}
+                              className="w-full text-left p-2.5 rounded-xl bg-[#FEF08A]/60 hover:bg-[#FEF08A] border border-[#D4B996] flex items-center justify-between gap-2 cursor-pointer"
+                            >
+                              <div className="min-w-0">
+                                <div className="text-xs font-bold text-[#1E293B] truncate">
+                                  {card.frontPrompt}
+                                </div>
+                                <div className="text-[11px] text-slate-700 truncate">
+                                  {card.backAnswer}
+                                </div>
+                              </div>
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#1E293B] text-white shrink-0">
+                                3D Card
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {cornellHits.length > 0 && (
+                        <div className="space-y-1 pt-1">
+                          <div className="text-[10px] font-mono uppercase tracking-wider font-bold text-slate-500">
+                            Cornell Notes ({cornellHits.length})
+                          </div>
+                          {cornellHits.slice(0, 5).map((note) => (
+                            <button
+                              key={note.id}
+                              type="button"
+                              onClick={() => {
+                                setSubject(note.subject);
+                                if (note.topicId) setActiveTopic(note.topicId);
+                                setStudioTab('cornell');
+                                panToRight();
+                                setShowSearchModal(false);
+                              }}
+                              className="w-full text-left p-2.5 rounded-xl bg-white/90 hover:bg-[#F5EBE0] border border-[#D4B996] flex items-center justify-between gap-2 cursor-pointer"
+                            >
+                              <div className="min-w-0">
+                                <div className="text-xs font-bold text-[#1E293B] truncate">
+                                  {note.subject} — {note.cues || 'Cornell Sheet'}
+                                </div>
+                                <div className="text-[11px] text-slate-600 truncate">
+                                  {note.summary || note.notes}
+                                </div>
+                              </div>
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#10B981] text-white shrink-0">
+                                Cornell
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {fileHits.length > 0 && (
+                        <div className="space-y-1 pt-1">
+                          <div className="text-[10px] font-mono uppercase tracking-wider font-bold text-slate-500">
+                            Uploaded Sources ({fileHits.length})
+                          </div>
+                          {fileHits.slice(0, 5).map((file) => (
+                            <button
+                              key={file.id}
+                              type="button"
+                              onClick={() => {
+                                setSubject(file.subject);
+                                panToLeft();
+                                setShowSearchModal(false);
+                              }}
+                              className="w-full text-left p-2.5 rounded-xl bg-white/90 hover:bg-[#F5EBE0] border border-[#D4B996] flex items-center justify-between gap-2 cursor-pointer"
+                            >
+                              <div className="min-w-0">
+                                <div className="text-xs font-bold text-[#1E293B] truncate">
+                                  {file.name}
+                                </div>
+                                <div className="text-[11px] text-slate-600 truncate">
+                                  {file.subject}
+                                </div>
+                              </div>
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#F5EBE0] text-[#1E293B] shrink-0">
+                                Source
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </header>
   );
 }
+

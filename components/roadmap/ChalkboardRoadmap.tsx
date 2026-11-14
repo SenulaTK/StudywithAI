@@ -25,6 +25,7 @@ import {
 import { chiptuneAudio } from '@/lib/audio';
 import { storageAdapter } from '@/lib/storage';
 import { WhiteboardTeachingStage } from '@/components/roadmap/WhiteboardTeachingStage';
+import { generateSyllabusTopicsWithAI } from '@/lib/syllabusGenerator';
 
 const BADGE_CONFIG: Record<
   BadgeStatus,
@@ -96,18 +97,25 @@ export function ChalkboardRoadmap() {
     userXP,
     streakCount,
     backpackFiles,
+    aiEngineMode,
+    localModelId,
+    geminiHasKey,
     createNotebook,
     deleteNotebook,
     addTopic,
+    addSyllabusTopics,
     deleteTopic,
     setActiveTopic,
     addBackpackFile,
     removeBackpackFile,
+    setLocalModelState,
   } = useStudyDeskStore();
 
   // Blank first-notebook creation state
   const [nbName, setNbName] = useState('');
   const [nbBoard, setNbBoard] = useState('');
+  const [autoSeedSyllabus, setAutoSeedSyllabus] = useState(false);
+  const [isGeneratingSyllabus, setIsGeneratingSyllabus] = useState(false);
   const [confirmDeleteNotebook, setConfirmDeleteNotebook] = useState(false);
 
   // Blank topic creation state
@@ -141,27 +149,78 @@ export function ChalkboardRoadmap() {
   const xpIntoLevel = userXP % 500;
   const levelProgressPct = Math.min(100, Math.round((xpIntoLevel / 500) * 100));
 
+  const extractPdfTokensFromString = (
+    sourceText: string,
+    sink: string[],
+    limit = 320
+  ) => {
+    const regex = /\(([^()\\]{3,220})\)/g;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(sourceText)) !== null && sink.length < limit) {
+      const token = match[1]
+        .replace(/\\n|\\r|\\t/g, ' ')
+        .replace(/[^\x20-\x7E]/g, ' ')
+        .trim();
+      if (token.length >= 3 && /[a-zA-Z]{2,}/.test(token)) {
+        sink.push(token);
+      }
+    }
+  };
+
   const extractPdfTextFromBuffer = async (file: File): Promise<string> => {
     const buffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
     const decoder = new TextDecoder('latin1');
-    const raw = decoder.decode(buffer);
+    const raw = decoder.decode(bytes);
 
     const extractedTokens: string[] = [];
-    const regex = /\(([^()\\]{3,200})\)/g;
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(raw)) !== null) {
-      const token = match[1].replace(/[^\x20-\x7E]/g, ' ').trim();
-      if (token.length >= 3 && /[a-zA-Z]{2,}/.test(token)) {
-        extractedTokens.push(token);
+    extractPdfTokensFromString(raw, extractedTokens, 320);
+
+    // Attempt browser-native DecompressionStream('deflate') on compressed PDF streams
+    if (
+      extractedTokens.length < 25 &&
+      typeof DecompressionStream !== 'undefined'
+    ) {
+      const streamRegex = /stream\r?\n([\s\S]{16,65536}?)\r?\nendstream/g;
+      let streamMatch: RegExpExecArray | null;
+      let streamsTried = 0;
+
+      while (
+        (streamMatch = streamRegex.exec(raw)) !== null &&
+        streamsTried < 18 &&
+        extractedTokens.length < 320
+      ) {
+        streamsTried += 1;
+        const bodyLatin1 = streamMatch[1];
+        const compressed = new Uint8Array(bodyLatin1.length);
+        for (let i = 0; i < bodyLatin1.length; i++) {
+          compressed[i] = bodyLatin1.charCodeAt(i) & 0xff;
+        }
+
+        for (const fmt of ['deflate', 'deflate-raw'] as const) {
+          try {
+            const ds = new DecompressionStream(fmt);
+            const writer = ds.writable.getWriter();
+            writer.write(compressed).catch(() => {});
+            writer.close().catch(() => {});
+            const decompressedBuf = await new Response(
+              ds.readable
+            ).arrayBuffer();
+            const textStream = decoder.decode(decompressedBuf);
+            extractPdfTokensFromString(textStream, extractedTokens, 320);
+            if (extractedTokens.length > 0) break;
+          } catch {
+            // Stream was not zlib/deflate or used custom predictor
+          }
+        }
       }
-      if (extractedTokens.length >= 250) break;
     }
 
     const joined = extractedTokens.join(' ').replace(/\s+/g, ' ').trim();
     if (joined.length > 40) {
       return joined;
     }
-    return `Uploaded PDF "${file.name}" (${Math.max(1, Math.round(file.size / 1024))} KB) — no uncompressed text stream found.`;
+    return `Uploaded PDF "${file.name}" (${Math.max(1, Math.round(file.size / 1024))} KB) — ready for reference in ${currentSubject}.`;
   };
 
   const chunkTextWithOverlap = (
@@ -245,13 +304,51 @@ export function ChalkboardRoadmap() {
     chiptuneAudio.playPaperFlip();
   };
 
-  const handleCreateFirstNotebook = (e: React.FormEvent) => {
+  const handleGenerateSyllabusForSubject = async (
+    targetSubject: string,
+    targetBoard: string
+  ) => {
+    if (!targetSubject || isGeneratingSyllabus) return;
+    setIsGeneratingSyllabus(true);
+    try {
+      const ragChunks = backpackFiles
+        .filter((f) => f.subject === targetSubject)
+        .flatMap((f) => f.chunks);
+      const generatedNodes = await generateSyllabusTopicsWithAI({
+        subject: targetSubject,
+        syllabusBoard: targetBoard,
+        ragContext: ragChunks,
+        aiEngineMode,
+        localModelId,
+        geminiHasKey,
+        onLocalProgress: (report) => {
+          setLocalModelState({
+            status: report.progress >= 100 ? 'ready' : 'loading',
+            progress: report.progress,
+            text: report.text,
+          });
+        },
+      });
+      addSyllabusTopics(targetSubject, generatedNodes);
+      chiptuneAudio.playMasteryFanfare();
+      setShowAddTopic(false);
+    } finally {
+      setIsGeneratingSyllabus(false);
+    }
+  };
+
+  const handleCreateFirstNotebook = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nbName.trim()) return;
+    const cleanName = nbName.trim();
+    const cleanBoard = nbBoard.trim();
+    if (!cleanName) return;
     chiptuneAudio.playSchoolBellChime();
-    createNotebook(nbName, nbBoard);
+    createNotebook(cleanName, cleanBoard);
     setNbName('');
     setNbBoard('');
+    if (autoSeedSyllabus) {
+      await handleGenerateSyllabusForSubject(cleanName, cleanBoard);
+    }
   };
 
   const handleCreateTopicSubmit = (e: React.FormEvent) => {
@@ -300,6 +397,25 @@ export function ChalkboardRoadmap() {
                   }
                   /{subjectNodes.length}
                 </span>
+                {subjectNodes.length === 0 && (
+                  <button
+                    type="button"
+                    disabled={isGeneratingSyllabus}
+                    onClick={() =>
+                      handleGenerateSyllabusForSubject(
+                        currentSubject,
+                        syllabusBoard
+                      )
+                    }
+                    title="Auto-generate 4 curriculum units, formulas & quizzes"
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[#FDE047] hover:bg-yellow-300 border border-[#1E293B] text-xs font-bold text-[#1E293B] cursor-pointer transition-colors"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>
+                      {isGeneratingSyllabus ? 'Building...' : 'AI Syllabus'}
+                    </span>
+                  </button>
+                )}
                 <button
                   id="chalkboard-add-topic-toggle"
                   type="button"
@@ -365,31 +481,46 @@ export function ChalkboardRoadmap() {
                 </h3>
               </div>
               <p className="text-xs text-slate-600 leading-relaxed">
-                Start with a blank notebook and add only the topics you want to
-                study.
+                Start with a clean blank notebook or let Professor Barnaby
+                generate a 4-unit syllabus with formulas &amp; quizzes.
               </p>
               <input
                 id="chalkboard-first-notebook-input"
                 type="text"
                 required
-                placeholder="Notebook name"
+                placeholder="Notebook name (e.g. Calculus, Physics, Biology)"
                 value={nbName}
                 onChange={(e) => setNbName(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg bg-white border border-[#CBD5E1] text-xs text-[#1E293B] placeholder:text-slate-400 focus:outline-none focus:border-[#059669]"
               />
               <input
                 type="text"
-                placeholder="Course or curriculum tag (optional)"
+                placeholder="Course or curriculum tag (e.g. AP, IB HL, A-Level)"
                 value={nbBoard}
                 onChange={(e) => setNbBoard(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg bg-white border border-[#CBD5E1] text-xs text-[#1E293B] placeholder:text-slate-400 focus:outline-none focus:border-[#059669]"
               />
+              <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={autoSeedSyllabus}
+                  onChange={(e) => setAutoSeedSyllabus(e.target.checked)}
+                  className="rounded border-slate-300 accent-[#059669]"
+                />
+                <span>
+                  Auto-generate 4 syllabus units, formulas &amp; whiteboard
+                  slides
+                </span>
+              </label>
               <button
                 id="chalkboard-create-notebook-btn"
                 type="submit"
-                className="w-full py-2 px-3 rounded-lg bg-[#1A2E26] hover:bg-[#243F35] text-[#FDE047] text-xs font-bold cursor-pointer transition-colors shadow-[2px_2px_0px_#10B981]"
+                disabled={isGeneratingSyllabus}
+                className="w-full py-2 px-3 rounded-lg bg-[#1A2E26] hover:bg-[#243F35] disabled:opacity-50 text-[#FDE047] text-xs font-bold cursor-pointer transition-colors shadow-[2px_2px_0px_#10B981]"
               >
-                Create Notebook
+                {isGeneratingSyllabus
+                  ? 'Generating Syllabus...'
+                  : 'Create Notebook'}
               </button>
             </form>
           ) : (
@@ -446,13 +577,35 @@ export function ChalkboardRoadmap() {
                       onChange={(e) => setTopicSubtitle(e.target.value)}
                       className="w-full px-2.5 py-1.5 rounded-lg bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#1E293B] placeholder:text-slate-400 focus:outline-none focus:border-[#059669]"
                     />
-                    <button
-                      id="chalkboard-submit-topic-btn"
-                      type="submit"
-                      className="w-full py-1.5 rounded-lg bg-[#10B981] hover:bg-[#059669] text-white text-xs font-bold cursor-pointer transition-colors"
-                    >
-                      Add Topic to Whiteboard
-                    </button>
+                    <div className="flex flex-col gap-1.5">
+                      <button
+                        id="chalkboard-submit-topic-btn"
+                        type="submit"
+                        className="w-full py-1.5 rounded-lg bg-[#10B981] hover:bg-[#059669] text-white text-xs font-bold cursor-pointer transition-colors"
+                      >
+                        Add Topic to Whiteboard
+                      </button>
+                      {subjectNodes.length === 0 && (
+                        <button
+                          type="button"
+                          disabled={isGeneratingSyllabus}
+                          onClick={() =>
+                            handleGenerateSyllabusForSubject(
+                              currentSubject,
+                              syllabusBoard
+                            )
+                          }
+                          className="w-full py-1.5 rounded-lg bg-[#FEF9C3] hover:bg-[#FDE047] border border-[#1E293B] text-[#1E293B] text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-[#D97706]" />
+                          <span>
+                            {isGeneratingSyllabus
+                              ? 'Building 4-Unit Syllabus...'
+                              : 'Auto-Generate 4-Unit Syllabus & Formulas'}
+                          </span>
+                        </button>
+                      )}
+                    </div>
                   </motion.form>
                 )}
               </AnimatePresence>

@@ -128,6 +128,7 @@ function parseLocalJsonOrFallback(rawText: string): {
   latexFormula?: string;
   latexCaption?: string;
   hintSteps?: string[];
+  quizQuestion?: BarnabyResponse['quizQuestion'];
 } {
   const trimmed = rawText.trim();
   const cleaned = trimmed
@@ -138,6 +139,41 @@ function parseLocalJsonOrFallback(rawText: string): {
   try {
     const parsed = JSON.parse(cleaned) as Record<string, unknown>;
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const rawQuiz =
+        parsed.quizQuestion &&
+        typeof parsed.quizQuestion === 'object' &&
+        !Array.isArray(parsed.quizQuestion)
+          ? (parsed.quizQuestion as Record<string, unknown>)
+          : null;
+      const validOptions =
+        rawQuiz && Array.isArray(rawQuiz.options)
+          ? rawQuiz.options
+              .filter(
+                (o): o is string => typeof o === 'string' && o.trim().length > 0
+              )
+              .slice(0, 4)
+          : [];
+      const quizQuestion =
+        rawQuiz &&
+        typeof rawQuiz.question === 'string' &&
+        rawQuiz.question.trim().length > 0 &&
+        validOptions.length >= 2
+          ? {
+              question: rawQuiz.question.trim(),
+              options: validOptions,
+              correctIndex: Math.min(
+                Math.max(0, Number(rawQuiz.correctIndex) || 0),
+                validOptions.length - 1
+              ),
+              socraticExplanation:
+                typeof rawQuiz.socraticExplanation === 'string' &&
+                rawQuiz.socraticExplanation.trim()
+                  ? rawQuiz.socraticExplanation.trim()
+                  : 'Verified from topic principles.',
+              bloomsLevel: validateBlooms(parsed.bloomsLevel),
+            }
+          : undefined;
+
       return {
         reply:
           typeof parsed.reply === 'string' && parsed.reply.trim()
@@ -160,6 +196,7 @@ function parseLocalJsonOrFallback(rawText: string): {
         hintSteps: Array.isArray(parsed.hintSteps)
           ? parsed.hintSteps.filter((h): h is string => typeof h === 'string')
           : undefined,
+        quizQuestion,
       };
     }
   } catch {
