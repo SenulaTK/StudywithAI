@@ -2,6 +2,8 @@ import Dexie, { type Table } from 'dexie';
 
 export type StorageProviderType = 'local-dexie';
 
+export const DESK_SCHEMA_VERSION = 'clean-v2';
+
 export interface StoredStickyNote {
   id: string;
   subject: string;
@@ -76,7 +78,7 @@ export interface StoredRoadmapTopicNode {
   initialSocraticQuestion: string;
   initialHints: string[];
   diagnosticQuestions: StoredDiagnosticQuestion[];
-  labModel?: string;
+  labExpression?: string;
 }
 
 export interface StoredDialogueTurn {
@@ -99,6 +101,7 @@ export interface StoredDialogueTurn {
 }
 
 export interface StoredDeskMeta {
+  schemaVersion?: string;
   userXP: number;
   streakCount: number;
   lastStudyDate?: string | null;
@@ -115,6 +118,7 @@ export interface StoredDeskMeta {
 
 export interface DeskSnapshotArchive {
   formatVersion: '1.0.0-desk' | '2.0.0-desk';
+  schemaVersion?: string;
   exportedAt: string;
   userXP: number;
   streakCount: number;
@@ -142,7 +146,7 @@ class StudyDeskDatabase extends Dexie {
   kvMeta!: Table<{ key: string; value: string }, string>;
 
   constructor() {
-    super('BarnabyStudyDeskDB');
+    super('BarnabyStudyDeskCleanDB');
     this.version(1).stores({
       stickyNotes: 'id, subject, topicId, masteryStatus, updatedAt',
       backpackFiles: 'id, subject, type, uploadedAt',
@@ -163,9 +167,18 @@ export class BYOSStorageAdapter {
   }
 
   /**
-   * Saves a binary/JSON snapshot to Origin Private File System (WebOPFS) if supported,
-   * in addition to Dexie IndexedDB.
+   * Removes legacy pre-production IndexedDB data so previously-visited browsers
+   * start cleanly without leftover demo subjects.
    */
+  public async purgeLegacyDemoDb(): Promise<void> {
+    if (typeof window === 'undefined') return;
+    try {
+      await Dexie.delete('BarnabyStudyDeskDB');
+    } catch {
+      // Ignore deletion errors if browser restricts IndexedDB
+    }
+  }
+
   public async persistToOPFS(
     filename: string,
     content: string
@@ -242,17 +255,24 @@ export class BYOSStorageAdapter {
   public async saveDeskMeta(meta: StoredDeskMeta): Promise<void> {
     if (!deskDb) return;
     await deskDb.kvMeta.put({
-      key: 'desk-meta-v1',
-      value: JSON.stringify(meta),
+      key: 'desk-meta-clean-v2',
+      value: JSON.stringify({
+        ...meta,
+        schemaVersion: DESK_SCHEMA_VERSION,
+      }),
     });
   }
 
   public async loadDeskMeta(): Promise<StoredDeskMeta | null> {
     if (!deskDb) return null;
-    const record = await deskDb.kvMeta.get('desk-meta-v1');
+    const record = await deskDb.kvMeta.get('desk-meta-clean-v2');
     if (!record) return null;
     try {
-      return JSON.parse(record.value) as StoredDeskMeta;
+      const parsed = JSON.parse(record.value) as StoredDeskMeta;
+      if (parsed.schemaVersion !== DESK_SCHEMA_VERSION) {
+        return null;
+      }
+      return parsed;
     } catch {
       return null;
     }
@@ -262,6 +282,7 @@ export class BYOSStorageAdapter {
    * Wipes all local workspace notebooks, notes, flashcards, files, and metadata cleanly.
    */
   public async clearAllDeskData(): Promise<void> {
+    await this.purgeLegacyDemoDb();
     if (deskDb) {
       await Promise.all([
         deskDb.stickyNotes.clear(),
@@ -281,13 +302,17 @@ export class BYOSStorageAdapter {
   }
 
   /**
-   * Exports a zero-cloud `.desk` archive file containing all student mastery state,
-   * notebooks, topics, dialogues, sticky notes, RAG backpack chunks, and Cornell notes.
+   * Exports a zero-cloud `.desk` archive file containing all user mastery state,
+   * notebooks, topics, dialogues, sticky notes, backpack files, and Cornell notes.
    */
   public async exportDeskArchive(
     snapshot: DeskSnapshotArchive
   ): Promise<void> {
-    const serialized = JSON.stringify(snapshot, null, 2);
+    const serialized = JSON.stringify(
+      { ...snapshot, schemaVersion: DESK_SCHEMA_VERSION },
+      null,
+      2
+    );
     await this.persistToOPFS('latest-backup.desk', serialized);
 
     if (typeof window === 'undefined') return;
@@ -341,11 +366,12 @@ export class BYOSStorageAdapter {
         }
       }
       await this.saveDeskMeta({
+        schemaVersion: DESK_SCHEMA_VERSION,
         userXP: parsed.userXP || 0,
         streakCount: parsed.streakCount || 0,
         lastStudyDate: parsed.lastStudyDate ?? null,
         currentSubject: parsed.currentSubject || '',
-        syllabusBoard: parsed.syllabusBoard || 'General',
+        syllabusBoard: parsed.syllabusBoard || '',
         activeTopicId: parsed.activeTopicId || '',
         subjects: parsed.subjects || [],
         roadmapState: parsed.roadmapState || [],

@@ -22,7 +22,6 @@ import {
   Plus,
   KeyRound,
   AlertTriangle,
-  Wand2,
   Trash2,
 } from 'lucide-react';
 import { useStudyDeskStore, type WorkbookTab } from '@/lib/store';
@@ -98,7 +97,6 @@ export function WorkbookCanvas() {
     addTopicHint,
     removeTopicHint,
     addTopicQuestion,
-    applyBarnabyTopicKit,
     recordQuizAnswer,
     appendDialogueTurn,
     awardXP,
@@ -110,7 +108,6 @@ export function WorkbookCanvas() {
   // Prompting & Gemini API state
   const [studentInput, setStudentInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isScaffolding, setIsScaffolding] = useState(false);
   const [quickKeyInput, setQuickKeyInput] = useState('');
   const [apiError, setApiError] = useState<{
     code: string;
@@ -330,51 +327,6 @@ export function WorkbookCanvas() {
     }
   };
 
-  const handleGenerateTopicKit = async () => {
-    if (!activeNode || isScaffolding) return;
-    setApiError(null);
-    setIsScaffolding(true);
-    try {
-      const ragChunks = backpackFiles
-        .filter((f) => f.subject === currentSubject)
-        .flatMap((f) => f.chunks);
-      const kit = await geminiRotator.scaffoldTopicKit({
-        subject: currentSubject,
-        topicTitle: activeNode.title,
-        subtitle: activeNode.subtitle,
-        syllabusBoard,
-        ragContext: ragChunks,
-      });
-      applyBarnabyTopicKit(activeNode.id, kit);
-      setSpeechOverride({
-        topicId: activeNode.id,
-        reply: kit.greeting,
-        socraticFollowUp: kit.socraticQuestion,
-        bloomsLevel: kit.diagnosticQuestion.bloomsLevel,
-        latexFormula: kit.latexFormula || undefined,
-        latexCaption: kit.latexCaption || undefined,
-        hintSteps: kit.hintSteps.length > 0 ? kit.hintSteps : undefined,
-        keyUsed: kit.keyUsed,
-        trigger: nextWorkbookSeq(),
-      });
-      chiptuneAudio.playMasteryFanfare();
-    } catch (err) {
-      if (err instanceof GeminiConfigError) {
-        if (err.code === 'NO_API_KEY') {
-          setGeminiHasKey(false);
-        }
-        setApiError({ code: err.code, message: err.message });
-      } else {
-        setApiError({
-          code: 'GEMINI_REQUEST_FAILED',
-          message: 'Could not generate starter content from Gemini.',
-        });
-      }
-    } finally {
-      setIsScaffolding(false);
-    }
-  };
-
   const handleSaveFormula = (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeNode) return;
@@ -510,7 +462,9 @@ export function WorkbookCanvas() {
               </span>
               <span className="text-xs font-mono text-slate-600">
                 {currentSubject
-                  ? `${currentSubject} • ${syllabusBoard} Folio`
+                  ? syllabusBoard
+                    ? `${currentSubject} • ${syllabusBoard}`
+                    : `${currentSubject} Notebook`
                   : 'Open Workbook'}
               </span>
             </div>
@@ -581,8 +535,9 @@ export function WorkbookCanvas() {
           isStreamingTrigger={latestBarnabySpeech?.trigger || 0}
         />
 
-        {/* Inline Gemini API Key Setup Card (shown cleanly when no key is configured) */}
-        {(geminiHasKey === false || apiError?.code === 'NO_API_KEY') && (
+        {/* Inline Gemini API Key Setup Card (only shown when actively studying a topic or on NO_API_KEY error) */}
+        {((Boolean(activeNode) && geminiHasKey === false) ||
+          apiError?.code === 'NO_API_KEY') && (
           <form
             onSubmit={handleSaveQuickKey}
             className="rounded-xl bg-[#FEF08A]/85 border-2 border-[#1E293B] p-3.5 school-stamp-card space-y-2.5"
@@ -709,36 +664,6 @@ export function WorkbookCanvas() {
             <PersonaMenuStage stageKey={`${activeNode.id}-${workbookTab}`}>
               {workbookTab === 'lesson' && (
                 <div className="space-y-4">
-                  {/* Optional Real-AI Topic Starter Generator */}
-                  {geminiHasKey &&
-                    !currentLatex &&
-                    currentHints.length === 0 &&
-                    activeNode.diagnosticQuestions.length === 0 && (
-                      <div className="rounded-xl bg-[#1A2E26] text-[#FDFBF7] p-3.5 flex flex-wrap items-center justify-between gap-3">
-                        <div className="text-xs">
-                          <span className="font-bold text-[#FDE047] block">
-                            Need a starting point for {activeNode.title}?
-                          </span>
-                          <span className="text-slate-300">
-                            Ask Gemini 2.0 Flash to generate a formula, hints &amp;
-                            practice question.
-                          </span>
-                        </div>
-                        <button
-                          id="generate-topic-kit-btn"
-                          type="button"
-                          disabled={isScaffolding}
-                          onClick={handleGenerateTopicKit}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#10B981] hover:bg-[#059669] disabled:opacity-50 text-white text-xs font-bold cursor-pointer shrink-0"
-                        >
-                          <Wand2 className="w-3.5 h-3.5" />
-                          {isScaffolding
-                            ? 'Drafting with Gemini...'
-                            : 'Draft Study Kit'}
-                        </button>
-                      </div>
-                    )}
-
                   {/* Paperclipped KaTeX Formula Card */}
                   {currentLatex && !showFormulaEditor ? (
                     <div className="relative rounded-xl bg-[#FFFDF9] border-2 border-[#1E293B] p-4 school-stamp-card rotate-[-0.35deg]">
@@ -795,14 +720,14 @@ export function WorkbookCanvas() {
                       </div>
                       <input
                         type="text"
-                        placeholder="Caption (e.g. Second Derivative Test)"
+                        placeholder="Formula title or label (optional)"
                         value={captionInput}
                         onChange={(e) => setCaptionInput(e.target.value)}
                         className="w-full px-3 py-1.5 rounded-lg border border-[#C8AE8D] bg-white text-xs focus:outline-none focus:border-[#1A2E26]"
                       />
                       <input
                         type="text"
-                        placeholder="LaTeX expression (e.g. E = mc^2 or \\int_a^b f(x)dx)"
+                        placeholder="Enter LaTeX equation"
                         value={latexInput}
                         onChange={(e) => setLatexInput(e.target.value)}
                         className="w-full px-3 py-1.5 rounded-lg border border-[#C8AE8D] bg-white text-xs font-mono focus:outline-none focus:border-[#1A2E26]"
@@ -1088,8 +1013,8 @@ export function WorkbookCanvas() {
                         No diagnostic questions in {activeNode.code} yet
                       </p>
                       <p className="text-xs text-slate-600 max-w-md mx-auto">
-                        Add custom self-check questions above, or connect a
-                        Gemini API key to draft one from your topic notes.
+                        Use &ldquo;+ Add Question&rdquo; above to write a
+                        checkpoint question for this topic.
                       </p>
                     </div>
                   ) : (
@@ -1255,7 +1180,9 @@ export function WorkbookCanvas() {
               : tutorMode === 'feynman'
                 ? `Explain ${activeNode.title} as if teaching a classmate...`
                 : tutorMode === 'exam'
-                  ? `Write your ${syllabusBoard} working or ask for a checkpoint...`
+                  ? syllabusBoard
+                    ? `Write your ${syllabusBoard} working or ask for a checkpoint...`
+                    : 'Write your working or ask for a checkpoint...'
                   : `Ask Professor Barnaby about ${activeNode.title}...`
           }
           className="flex-1 px-3.5 py-2.5 rounded-xl bg-white disabled:bg-[#F5EBE0]/60 border-2 border-[#C8AE8D] text-xs sm:text-sm text-[#1E293B] placeholder:text-slate-400 focus:outline-none focus:border-[#1A2E26] shadow-inner"

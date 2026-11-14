@@ -15,7 +15,7 @@ import {
   Columns3,
   Map,
   BookOpenCheck,
-  FlaskConical,
+  Sliders,
   Award,
   Flame,
   HardDrive,
@@ -27,22 +27,12 @@ import {
 } from 'lucide-react';
 import {
   useStudyDeskStore,
-  type SyllabusBoard,
   type CameraPanTarget,
 } from '@/lib/store';
 import { chiptuneAudio } from '@/lib/audio';
 import { geminiRotator, type KeySlotStatus } from '@/lib/gemini';
 import { storageAdapter } from '@/lib/storage';
 import { PersonaMenuStage } from '@/components/transitions/PersonaSchoolTransition';
-
-const BOARDS: SyllabusBoard[] = [
-  'General',
-  'AQA',
-  'Edexcel',
-  'OCR',
-  'IB',
-  'AP',
-];
 
 const STATIONS: Array<{
   id: CameraPanTarget;
@@ -52,7 +42,7 @@ const STATIONS: Array<{
   { id: 'overview', label: 'Study Desk', icon: Columns3 },
   { id: 'left', label: 'Chalkboard', icon: Map },
   { id: 'center', label: 'Workbook', icon: BookOpenCheck },
-  { id: 'right', label: '3D Studio', icon: FlaskConical },
+  { id: 'right', label: 'Notes & Graph', icon: Sliders },
 ];
 
 export function DeskHeader() {
@@ -77,7 +67,6 @@ export function DeskHeader() {
     selectedAnswers,
     createNotebook,
     setSubject,
-    setSyllabusBoard,
     setActiveCallState,
     setGeminiHasKey,
     panToLeft,
@@ -106,8 +95,7 @@ export function DeskHeader() {
   // New notebook creator modal state
   const [showCreateNotebook, setShowCreateNotebook] = useState(false);
   const [newSubjectName, setNewSubjectName] = useState('');
-  const [newSubjectBoard, setNewSubjectBoard] =
-    useState<SyllabusBoard>('General');
+  const [newSubjectBoard, setNewSubjectBoard] = useState('');
 
   const [archiveToast, setArchiveToast] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -205,7 +193,7 @@ export function DeskHeader() {
     chiptuneAudio.playSchoolBellChime();
     createNotebook(newSubjectName, newSubjectBoard);
     setNewSubjectName('');
-    setNewSubjectBoard('General');
+    setNewSubjectBoard('');
     setShowCreateNotebook(false);
   };
 
@@ -233,7 +221,7 @@ export function DeskHeader() {
       backpackFiles,
       cornellNotes: Object.values(cornellNotes),
     });
-    showToast('Exported .desk archive to your computer!');
+    showToast('Exported .desk backup file!');
   };
 
   const handleImportDesk = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -246,7 +234,7 @@ export function DeskHeader() {
         streakCount: archive.streakCount || 0,
         lastStudyDate: archive.lastStudyDate ?? null,
         currentSubject: archive.currentSubject || '',
-        syllabusBoard: (archive.syllabusBoard as SyllabusBoard) || 'General',
+        syllabusBoard: archive.syllabusBoard || '',
         activeTopicId: archive.activeTopicId || '',
         subjects: archive.subjects || [],
         roadmapState: archive.roadmapState || [],
@@ -264,7 +252,7 @@ export function DeskHeader() {
         4000
       );
     } catch {
-      showToast('Could not parse .desk archive file.', 4000);
+      showToast('Could not parse .desk backup file.', 4000);
     }
     e.target.value = '';
   };
@@ -321,7 +309,7 @@ export function DeskHeader() {
   return (
     <header className="w-full border-b-2 border-[#C8AE8D] bg-[#F3E6D3]/95 backdrop-blur-md px-3 sm:px-5 py-2.5 shadow-sm z-30 sticky top-0">
       <div className="max-w-[1760px] mx-auto flex flex-wrap items-center justify-between gap-3">
-        {/* LEFT: School Brand Crest & Dynamic User Notebooks */}
+        {/* LEFT: Brand Crest & Dynamic User Notebooks */}
         <div className="flex items-center gap-2.5 flex-wrap">
           <div className="chalkboard-surface border-2 border-[#4E342E] rounded-xl px-3.5 py-1.5 flex items-center gap-2.5 text-[#FDFBF7] shadow-[2px_2px_0px_#3E2723]">
             <BookOpen className="w-4 h-4 text-[#FDE047] shrink-0" />
@@ -331,18 +319,20 @@ export function DeskHeader() {
               </h1>
               <p className="text-xs text-emerald-200/90 font-mono leading-tight hidden sm:block">
                 {currentSubject
-                  ? `${syllabusBoard} • ${currentSubject}`
-                  : 'Empty Workspace'}
+                  ? syllabusBoard
+                    ? `${currentSubject} • ${syllabusBoard}`
+                    : currentSubject
+                  : 'Blank Desk'}
               </p>
             </div>
           </div>
 
-          {/* Dynamic User Subject Notebooks */}
+          {/* Dynamic User Notebooks */}
           {subjects.length > 0 && (
             <div
               className="flex items-center flex-wrap gap-1 bg-[#E6D5B8] p-1 rounded-xl border border-[#C8AE8D]"
               role="group"
-              aria-label="Your Subject Notebooks"
+              aria-label="Your Notebooks"
             >
               {subjects.map((subj) => {
                 const active = currentSubject === subj.name;
@@ -389,31 +379,11 @@ export function DeskHeader() {
             <Plus className="w-3.5 h-3.5" />
             <span>New Notebook</span>
           </button>
-
-          {/* Active Notebook Curriculum Selector */}
-          {currentSubject && (
-            <select
-              id="syllabus-board-select"
-              aria-label="Exam Syllabus Board"
-              value={syllabusBoard}
-              onChange={(e) => {
-                setSyllabusBoard(e.target.value as SyllabusBoard);
-                chiptuneAudio.playPaperFlip();
-              }}
-              className="bg-[#FDFBF7] border border-[#B89972] rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-[#1E293B] cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#1A2E26]"
-            >
-              {BOARDS.map((b) => (
-                <option key={b} value={b}>
-                  {b}
-                </option>
-              ))}
-            </select>
-          )}
         </div>
 
-        {/* CENTER: Classroom Station Switcher (Clear 1-Click Menu Navigation) */}
+        {/* CENTER: Station Switcher */}
         <nav
-          aria-label="Classroom Station Navigation"
+          aria-label="Workspace Navigation"
           className="flex items-center bg-[#FDFBF7] border-2 border-[#B89972] rounded-xl p-1 shadow-[2px_2px_0px_#C8AE8D]"
         >
           {STATIONS.map((station) => {
@@ -573,7 +543,7 @@ export function DeskHeader() {
             )}
           </button>
 
-          {/* Classroom Locker: API Keys, Backups & Reset */}
+          {/* Desk Locker: API Keys, Backups & Reset */}
           <button
             id="open-desk-vault-btn"
             type="button"
@@ -630,7 +600,7 @@ export function DeskHeader() {
             >
               <div className="flex items-center justify-between border-b border-[#D4B996] pb-3">
                 <h2 className="text-lg font-bold font-serif">
-                  Create New Subject Notebook
+                  Create Blank Notebook
                 </h2>
                 <button
                   type="button"
@@ -648,14 +618,14 @@ export function DeskHeader() {
                     htmlFor="new-notebook-name"
                     className="text-xs font-mono font-bold uppercase text-slate-700 block mb-1"
                   >
-                    Notebook / Subject Name
+                    Notebook Name
                   </label>
                   <input
                     id="new-notebook-name"
                     type="text"
                     required
                     autoFocus
-                    placeholder="e.g. Organic Chemistry, Calculus, Macroeconomics..."
+                    placeholder="Enter notebook title"
                     value={newSubjectName}
                     onChange={(e) => setNewSubjectName(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl bg-white border-2 border-[#C8AE8D] text-xs sm:text-sm focus:outline-none focus:border-[#1A2E26]"
@@ -667,22 +637,16 @@ export function DeskHeader() {
                     htmlFor="new-notebook-board"
                     className="text-xs font-mono font-bold uppercase text-slate-700 block mb-1"
                   >
-                    Syllabus / Standard
+                    Course / Standard (Optional)
                   </label>
-                  <select
+                  <input
                     id="new-notebook-board"
+                    type="text"
+                    placeholder="Optional course code or syllabus"
                     value={newSubjectBoard}
-                    onChange={(e) =>
-                      setNewSubjectBoard(e.target.value as SyllabusBoard)
-                    }
-                    className="w-full px-3 py-2 rounded-xl bg-white border-2 border-[#C8AE8D] text-xs sm:text-sm font-medium focus:outline-none focus:border-[#1A2E26]"
-                  >
-                    {BOARDS.map((b) => (
-                      <option key={b} value={b}>
-                        {b}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(e) => setNewSubjectBoard(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white border-2 border-[#C8AE8D] text-xs sm:text-sm focus:outline-none focus:border-[#1A2E26]"
+                  />
                 </div>
               </div>
 
@@ -699,7 +663,7 @@ export function DeskHeader() {
                   type="submit"
                   className="px-4 py-2 rounded-xl bg-[#1A2E26] hover:bg-[#243F35] text-[#FDFBF7] text-xs font-bold border border-[#1E293B] shadow-[2px_2px_0px_#FDE047] cursor-pointer"
                 >
-                  Create Blank Notebook
+                  Create Notebook
                 </button>
               </div>
             </motion.form>
@@ -729,7 +693,7 @@ export function DeskHeader() {
                 <div>
                   <h2 className="text-lg font-bold font-serif flex items-center gap-2">
                     <KeyRound className="w-5 h-5 text-[#1A2E26]" />
-                    Classroom Locker: API Keys, Saves &amp; Reset
+                    Desk Locker: API Keys, Saves &amp; Reset
                   </h2>
                   <p className="text-xs text-slate-600 mt-0.5">
                     Configure real Gemini 2.0 Flash keys, export local backups,
@@ -740,14 +704,14 @@ export function DeskHeader() {
                   id="close-desk-vault-btn"
                   type="button"
                   onClick={() => setShowVaultModal(false)}
-                  aria-label="Close Classroom Locker"
+                  aria-label="Close Desk Locker"
                   className="p-1.5 rounded-lg bg-[#E6D5B8] hover:bg-[#D4B996] text-[#1E293B] cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
-              {/* Clean Persona Skewed Locker Sub-Tabs */}
+              {/* Clean Locker Sub-Tabs */}
               <div className="flex items-center gap-1.5 bg-[#E6D5B8]/70 p-1 rounded-xl border border-[#C8AE8D]">
                 {(
                   [

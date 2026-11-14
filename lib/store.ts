@@ -1,7 +1,6 @@
 'use client';
 
 import { create } from 'zustand';
-import type { LabModelId, TopicKitResponse } from './gemini';
 import type {
   StoredBackpackFile,
   StoredCornellNote,
@@ -13,13 +12,7 @@ import type {
 } from './storage';
 
 export type SubjectName = string;
-export type SyllabusBoard =
-  | 'General'
-  | 'AQA'
-  | 'Edexcel'
-  | 'OCR'
-  | 'IB'
-  | 'AP';
+export type SyllabusBoard = string;
 export type BadgeStatus =
   | 'LOCKED'
   | 'UNLOCKED'
@@ -50,78 +43,6 @@ export type NotebookSubject = StoredNotebookSubject;
 export type DiagnosticQuestion = StoredDiagnosticQuestion;
 export type RoadmapTopicNode = StoredRoadmapTopicNode;
 export type WorkbookDialogueTurn = StoredDialogueTurn;
-
-export const LAB_MODEL_OPTIONS: Array<{
-  id: Exclude<LabModelId, ''>;
-  category: string;
-  title: string;
-  sliderA: string;
-  sliderB: string;
-}> = [
-  {
-    id: 'math-secant',
-    category: 'Mathematics',
-    title: 'Secant-to-Tangent Limit Explorer',
-    sliderA: 'Secant Step h (Δx → 0)',
-    sliderB: 'Base Point Coordinate x₀',
-  },
-  {
-    id: 'math-cubic',
-    category: 'Mathematics',
-    title: 'Cubic Stationary & Inflection Curvature',
-    sliderA: 'Probe Coordinate x₀',
-    sliderB: 'Cubic Steepness Parameter k',
-  },
-  {
-    id: 'math-riemann',
-    category: 'Mathematics',
-    title: 'Riemann Integration Area Accumulator',
-    sliderA: 'Upper Bound b (∫₀ᵇ x·eˣ dx)',
-    sliderB: 'Riemann Sub-Intervals N',
-  },
-  {
-    id: 'math-ode',
-    category: 'Mathematics',
-    title: 'Separable ODE Phase & Decay Field',
-    sliderA: 'Decay Constant k (dy/dt = -ky)',
-    sliderB: 'Initial Condition Amplitude y(0)',
-  },
-  {
-    id: 'phys-projectile',
-    category: 'Physics',
-    title: 'Ballistic Parabolic Trajectory',
-    sliderA: 'Launch Angle θ (15° → 80°)',
-    sliderB: 'Initial Launch Velocity v₀ (m/s)',
-  },
-  {
-    id: 'phys-shm',
-    category: 'Physics',
-    title: 'Simple Harmonic Oscillator & Damping',
-    sliderA: 'Angular Frequency ω (rad/s)',
-    sliderB: 'Damping Ratio ζ (Light → Heavy)',
-  },
-  {
-    id: 'phys-orbit',
-    category: 'Physics',
-    title: 'Gravitational Equipotential & Orbit',
-    sliderA: 'Orbital Radius r / R₀',
-    sliderB: 'Central Mass M (×10²⁴ kg)',
-  },
-  {
-    id: 'chem-lechatelier',
-    category: 'Chemistry',
-    title: 'Le Chatelier Dynamic Equilibrium Shift',
-    sliderA: 'System Pressure Perturbation P',
-    sliderB: 'Forward Rate Constant k_f',
-  },
-  {
-    id: 'chem-boltzmann',
-    category: 'Chemistry',
-    title: 'Maxwell-Boltzmann & Catalyst Barrier',
-    sliderA: 'Temperature T (Kelvin)',
-    sliderB: 'Activation Barrier E_a',
-  },
-];
 
 let storeSeq = 0;
 function nextId(prefix: string): string {
@@ -181,7 +102,7 @@ interface StudyDeskStore {
 
   // Actions
   setGeminiHasKey: (ready: boolean) => void;
-  createNotebook: (name: string, board: SyllabusBoard) => void;
+  createNotebook: (name: string, board?: SyllabusBoard) => void;
   deleteNotebook: (name: string) => void;
   setSubject: (subject: SubjectName) => void;
   setSyllabusBoard: (board: SyllabusBoard) => void;
@@ -190,7 +111,6 @@ interface StudyDeskStore {
     code: string;
     title: string;
     subtitle: string;
-    labModel?: LabModelId;
   }) => void;
   deleteTopic: (topicId: string) => void;
   setActiveTopic: (topicId: string) => void;
@@ -202,8 +122,7 @@ interface StudyDeskStore {
   addTopicHint: (topicId: string, hint: string) => void;
   removeTopicHint: (topicId: string, index: number) => void;
   addTopicQuestion: (topicId: string, question: DiagnosticQuestion) => void;
-  setTopicLabModel: (topicId: string, labModel: LabModelId) => void;
-  applyBarnabyTopicKit: (topicId: string, kit: TopicKitResponse) => void;
+  setTopicLabExpression: (topicId: string, labExpression: string) => void;
   recordQuizAnswer: (
     questionId: string,
     topicId: string,
@@ -266,7 +185,7 @@ interface StudyDeskStore {
 export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
   subjects: [],
   currentSubject: '',
-  syllabusBoard: 'General',
+  syllabusBoard: '',
   roadmapState: [],
   activeTopicId: '',
   userXP: 0,
@@ -301,8 +220,9 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
 
   clearTransition: () => set({ transitionBanner: null }),
 
-  createNotebook: (rawName, board) => {
+  createNotebook: (rawName, rawBoard = '') => {
     const cleanName = rawName.trim();
+    const cleanBoard = rawBoard.trim();
     if (!cleanName) return;
 
     const existing = get().subjects.find(
@@ -316,7 +236,7 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
     const newSubject: NotebookSubject = {
       id: nextId('subj'),
       name: cleanName,
-      syllabusBoard: board,
+      syllabusBoard: cleanBoard,
       createdAt: Date.now(),
     };
 
@@ -325,13 +245,13 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
     set((state) => ({
       subjects: [...state.subjects, newSubject],
       currentSubject: newSubject.name,
-      syllabusBoard: board,
+      syllabusBoard: cleanBoard,
       activeTopicId: '',
       streakCount: streak.streakCount,
       lastStudyDate: streak.lastStudyDate,
       transitionBanner: {
         id: Date.now(),
-        kicker: `NEW NOTEBOOK // ${board}`,
+        kicker: cleanBoard ? `NEW NOTEBOOK // ${cleanBoard}` : 'NEW NOTEBOOK',
         title: newSubject.name.toUpperCase(),
         theme: 'sunshine',
       },
@@ -376,14 +296,14 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
           : state.currentSubject;
       const nextBoard =
         remainingSubjects.find((s) => s.name === nextSubject)?.syllabusBoard ||
-        'General';
+        '';
       const nextTopic =
         remainingTopics.find((t) => t.subject === nextSubject)?.id || '';
 
       return {
         subjects: remainingSubjects,
         currentSubject: nextSubject,
-        syllabusBoard: nextBoard as SyllabusBoard,
+        syllabusBoard: nextBoard,
         roadmapState: remainingTopics,
         activeTopicId:
           state.currentSubject === name ? nextTopic : state.activeTopicId,
@@ -407,11 +327,13 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
     const chosenTheme = themes[Math.max(0, idx) % themes.length];
     set({
       currentSubject: subject,
-      syllabusBoard: (subjRecord.syllabusBoard as SyllabusBoard) || 'General',
+      syllabusBoard: subjRecord.syllabusBoard || '',
       activeTopicId: firstTopic ? firstTopic.id : '',
       transitionBanner: {
         id: Date.now(),
-        kicker: `SUBJECT PERIOD // ${subjRecord.syllabusBoard}`,
+        kicker: subjRecord.syllabusBoard
+          ? `NOTEBOOK // ${subjRecord.syllabusBoard}`
+          : 'NOTEBOOK',
         title: subject.toUpperCase(),
         theme: chosenTheme,
       },
@@ -420,13 +342,15 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
 
   setSyllabusBoard: (board) =>
     set((state) => ({
-      syllabusBoard: board,
+      syllabusBoard: board.trim(),
       subjects: state.subjects.map((s) =>
-        s.name === state.currentSubject ? { ...s, syllabusBoard: board } : s
+        s.name === state.currentSubject
+          ? { ...s, syllabusBoard: board.trim() }
+          : s
       ),
     })),
 
-  addTopic: ({ subject, code, title, subtitle, labModel }) =>
+  addTopic: ({ subject, code, title, subtitle }) =>
     set((state) => {
       const cleanTitle = title.trim();
       if (!cleanTitle || !subject) return state;
@@ -434,13 +358,12 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
       const existingCount = state.roadmapState.filter(
         (t) => t.subject === subject
       ).length;
-      const resolvedCode =
-        code.trim() || `T${existingCount + 1}`;
+      const resolvedCode = code.trim() || `T${existingCount + 1}`;
       const newTopic: RoadmapTopicNode = {
         id: nextId('topic'),
         code: resolvedCode.toUpperCase(),
         title: cleanTitle,
-        subtitle: subtitle.trim() || `${subject} study module`,
+        subtitle: subtitle.trim(),
         subject,
         status: 'UNLOCKED',
         coreLatex: '',
@@ -449,7 +372,7 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
         initialSocraticQuestion: '',
         initialHints: [],
         diagnosticQuestions: [],
-        labModel: labModel || '',
+        labExpression: '',
       };
 
       const streak = computeNextStreak(state.lastStudyDate, state.streakCount);
@@ -500,7 +423,7 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
           ? {
               ...t,
               coreLatex: latexFormula.trim(),
-              coreLatexCaption: latexCaption.trim() || 'Key Equation',
+              coreLatexCaption: latexCaption.trim(),
             }
           : t
       ),
@@ -543,57 +466,12 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
       ),
     })),
 
-  setTopicLabModel: (topicId, labModel) =>
+  setTopicLabExpression: (topicId, labExpression) =>
     set((state) => ({
       roadmapState: state.roadmapState.map((t) =>
-        t.id === topicId ? { ...t, labModel } : t
+        t.id === topicId ? { ...t, labExpression } : t
       ),
     })),
-
-  applyBarnabyTopicKit: (topicId, kit) =>
-    set((state) => {
-      const hasValidQuestion =
-        kit.diagnosticQuestion &&
-        kit.diagnosticQuestion.question &&
-        kit.diagnosticQuestion.options.length >= 2;
-
-      return {
-        roadmapState: state.roadmapState.map((t) => {
-          if (t.id !== topicId) return t;
-          const nextQuestions = hasValidQuestion
-            ? [
-                ...t.diagnosticQuestions,
-                {
-                  id: nextId('q'),
-                  bloomsLevel: kit.diagnosticQuestion.bloomsLevel,
-                  question: kit.diagnosticQuestion.question,
-                  formulaLatex: kit.diagnosticQuestion.formulaLatex,
-                  options: kit.diagnosticQuestion.options,
-                  correctIndex: kit.diagnosticQuestion.correctIndex,
-                  socraticExplanation:
-                    kit.diagnosticQuestion.socraticExplanation,
-                  xpReward: kit.diagnosticQuestion.xpReward || 75,
-                },
-              ]
-            : t.diagnosticQuestions;
-
-          return {
-            ...t,
-            initialBarnabyGreeting: kit.greeting || t.initialBarnabyGreeting,
-            initialSocraticQuestion:
-              kit.socraticQuestion || t.initialSocraticQuestion,
-            coreLatex: kit.latexFormula || t.coreLatex,
-            coreLatexCaption:
-              kit.latexCaption ||
-              (kit.latexFormula ? 'Topic Formula Anchor' : t.coreLatexCaption),
-            initialHints:
-              kit.hintSteps.length > 0 ? kit.hintSteps : t.initialHints,
-            labModel: kit.suggestedLabModel || t.labModel || '',
-            diagnosticQuestions: nextQuestions,
-          };
-        }),
-      };
-    }),
 
   recordQuizAnswer: (questionId, topicId, optionIdx, correctIndex, xpReward) => {
     const state = get();
@@ -643,8 +521,8 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
       cameraPan: 'left',
       transitionBanner: {
         id: Date.now(),
-        kicker: 'CLASSROOM STATION 02',
-        title: 'CHALKBOARD ROADMAP',
+        kicker: 'STATION 02',
+        title: 'CHALKBOARD',
         theme: 'chalk',
       },
     }),
@@ -653,8 +531,8 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
       cameraPan: 'center',
       transitionBanner: {
         id: Date.now(),
-        kicker: 'CLASSROOM STATION 03',
-        title: 'OPEN WORKBOOK',
+        kicker: 'STATION 03',
+        title: 'WORKBOOK',
         theme: 'crimson',
       },
     }),
@@ -663,8 +541,8 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
       cameraPan: 'right',
       transitionBanner: {
         id: Date.now(),
-        kicker: 'CLASSROOM STATION 04',
-        title: 'LAB & RECALL STUDIO',
+        kicker: 'STATION 04',
+        title: 'TOOLS STUDIO',
         theme: 'sunshine',
       },
     }),
@@ -673,7 +551,7 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
       cameraPan: 'overview',
       transitionBanner: {
         id: Date.now(),
-        kicker: 'CLASSROOM STATION 01',
+        kicker: 'STATION 01',
         title: 'FULL STUDY DESK',
         theme: 'mint',
       },
@@ -881,7 +759,7 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
     set({
       subjects: [],
       currentSubject: '',
-      syllabusBoard: 'General',
+      syllabusBoard: '',
       roadmapState: [],
       activeTopicId: '',
       userXP: 0,
@@ -937,7 +815,7 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
         subjects: restoredSubjects,
         currentSubject:
           data.currentSubject || restoredSubjects[0]?.name || '',
-        syllabusBoard: (data.syllabusBoard as SyllabusBoard) || 'General',
+        syllabusBoard: data.syllabusBoard || '',
         roadmapState: updatedRoadmap,
         activeTopicId:
           data.activeTopicId ||

@@ -15,8 +15,8 @@ import { chiptuneAudio } from '@/lib/audio';
 import type { BloomsLevel } from '@/lib/gemini';
 
 export type BarnabyCostume =
-  | 'maths'
-  | 'lab-science'
+  | 'scholar'
+  | 'lab-coat'
   | 'focus-sprint'
   | 'revision-test';
 
@@ -29,10 +29,10 @@ interface ProfessorBarnabyProps {
 }
 
 const COSTUME_LABELS: Record<BarnabyCostume, string> = {
-  maths: 'Maths Owl (Bowtie + Glasses)',
-  'lab-science': 'Science Lab (Coat + Goggles)',
+  scholar: 'Classic Scholar (Bowtie + Glasses)',
+  'lab-coat': 'Lab Coat (Coat + Goggles)',
   'focus-sprint': 'Focus Sprint (Headband)',
-  'revision-test': 'Revision Exam (Mortarboard)',
+  'revision-test': 'Exam Mode (Mortarboard)',
 };
 
 export function ProfessorBarnaby({
@@ -42,8 +42,7 @@ export function ProfessorBarnaby({
   keyUsed = null,
   isStreamingTrigger = 0,
 }: ProfessorBarnabyProps) {
-  const { currentSubject, activeCallState, audioMuted, geminiHasKey } =
-    useStudyDeskStore();
+  const { activeCallState, audioMuted, geminiHasKey } = useStudyDeskStore();
   const [manualCostume, setManualCostume] = useState<BarnabyCostume | null>(
     null
   );
@@ -65,18 +64,14 @@ export function ProfessorBarnaby({
   const isSpeaking =
     streamState.forKey === streamKey ? streamState.speaking : false;
 
-  const isScienceSubject = /chem|phys|bio|lab|sci/i.test(currentSubject);
-
-  // Derive active costume from context unless manually overridden
+  // Derive active costume from mode unless manually selected
   const derivedCostume: BarnabyCostume = manualCostume
     ? manualCostume
     : activeCallState === 'FOCUS_SPRINT'
       ? 'focus-sprint'
       : activeCallState === 'REVISION_TEST'
         ? 'revision-test'
-        : isScienceSubject
-          ? 'lab-science'
-          : 'maths';
+        : 'scholar';
 
   // Stream text with synchronized 8-bit chiptune Web Audio oscillator syllables
   useEffect(() => {
@@ -205,8 +200,8 @@ export function ProfessorBarnaby({
               >
                 {(
                   [
-                    { id: 'maths', label: 'Maths Bowtie' },
-                    { id: 'lab-science', label: 'Science Lab Coat' },
+                    { id: 'scholar', label: 'Classic Scholar' },
+                    { id: 'lab-coat', label: 'Lab Coat' },
                     { id: 'focus-sprint', label: 'Focus Headband' },
                     { id: 'revision-test', label: 'Grad Mortarboard' },
                   ] as const
@@ -333,8 +328,8 @@ export function ProfessorBarnaby({
               strokeWidth="2"
             />
 
-            {/* COSTUME OVERLAY: Chemistry / Physics White Paper Lab Coat */}
-            {derivedCostume === 'lab-science' && (
+            {/* COSTUME OVERLAY: Crisp Paper Lab Coat */}
+            {derivedCostume === 'lab-coat' && (
               <g>
                 <polygon
                   points="35,80 62,84 60,134 30,128"
@@ -418,8 +413,8 @@ export function ProfessorBarnaby({
               strokeWidth="1.8"
             />
 
-            {/* COSTUME 1: MATHS — Round Brass Glasses + Grid-Paper Bowtie */}
-            {derivedCostume === 'maths' && (
+            {/* COSTUME 1: CLASSIC SCHOLAR — Round Brass Glasses + Grid-Paper Bowtie */}
+            {derivedCostume === 'scholar' && (
               <g>
                 {/* Round Scholarly Glasses */}
                 <circle
@@ -486,8 +481,8 @@ export function ProfessorBarnaby({
               </g>
             )}
 
-            {/* COSTUME 2: CHEMISTRY / PHYSICS — Safety Goggles */}
-            {derivedCostume === 'lab-science' && (
+            {/* COSTUME 2: LAB COAT — Safety Goggles */}
+            {derivedCostume === 'lab-coat' && (
               <g>
                 <rect
                   x="35"

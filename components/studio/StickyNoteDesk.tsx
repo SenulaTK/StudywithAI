@@ -14,13 +14,10 @@ import {
   Sparkles,
   Save,
   Trash2,
+  X,
 } from 'lucide-react';
-import {
-  useStudyDeskStore,
-  LAB_MODEL_OPTIONS,
-  type StudioTab,
-} from '@/lib/store';
-import type { LabModelId } from '@/lib/gemini';
+import { useStudyDeskStore, type StudioTab } from '@/lib/store';
+import { compileMathExpression } from '@/lib/mathParser';
 import { chiptuneAudio } from '@/lib/audio';
 import { storageAdapter, type StoredStickyNote } from '@/lib/storage';
 import { PersonaMenuStage } from '@/components/transitions/PersonaSchoolTransition';
@@ -55,15 +52,19 @@ const STICKY_COLORS: Record<
   },
 };
 
-function StemSimulationSandbox({
-  modelId,
-  meta,
+function FunctionGraphCanvas({
+  expression,
+  paramA,
+  paramB,
+  evaluated,
+  parseError,
 }: {
-  modelId: Exclude<LabModelId, ''>;
-  meta: { title: string; sliderA: string; sliderB: string };
+  expression: string;
+  paramA: number;
+  paramB: number;
+  evaluated: ((x: number, a: number, b: number) => number) | null;
+  parseError: string | null;
 }) {
-  const [paramA, setParamA] = useState(45);
-  const [paramB, setParamB] = useState(60);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
@@ -74,463 +75,120 @@ function StemSimulationSandbox({
 
     const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
     const logicalW = 360;
-    const logicalH = 175;
+    const logicalH = 190;
     if (canvas.width !== logicalW * dpr || canvas.height !== logicalH * dpr) {
       canvas.width = logicalW * dpr;
       canvas.height = logicalH * dpr;
     }
+
     ctx.save();
     ctx.scale(dpr, dpr);
 
     const w = logicalW;
     const h = logicalH;
-    ctx.clearRect(0, 0, w, h);
+    const cx = w / 2;
+    const cy = h / 2;
+    const scaleX = w / 12; // [-6, 6]
+    const scaleY = h / 8; // [-4, 4]
 
+    ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = '#14241E';
     ctx.fillRect(0, 0, w, h);
 
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.07)';
+    // Subtle integer grid
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
     ctx.lineWidth = 1;
-    for (let x = 0; x <= w; x += 28) {
+    for (let gx = -5; gx <= 5; gx += 1) {
+      const px = cx + gx * scaleX;
       ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, h);
+      ctx.moveTo(px, 0);
+      ctx.lineTo(px, h);
       ctx.stroke();
     }
-    for (let y = 0; y <= h; y += 28) {
+    for (let gy = -3; gy <= 3; gy += 1) {
+      const py = cy - gy * scaleY;
       ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(w, y);
+      ctx.moveTo(0, py);
+      ctx.lineTo(w, py);
       ctx.stroke();
     }
 
-    ctx.strokeStyle = 'rgba(241, 245, 249, 0.35)';
+    // Principal coordinate axes
+    ctx.strokeStyle = 'rgba(241, 245, 249, 0.38)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(32, h - 26);
-    ctx.lineTo(w - 16, h - 26);
-    ctx.moveTo(32, h - 26);
-    ctx.lineTo(32, 16);
+    ctx.moveTo(0, cy);
+    ctx.lineTo(w, cy);
+    ctx.moveTo(cx, 0);
+    ctx.lineTo(cx, h);
     ctx.stroke();
 
-    if (modelId === 'math-cubic') {
-      const scaleK = 0.5 + (paramB / 100) * 1.1;
-      const probeX = -1.6 + (paramA / 100) * 3.2;
-      const centerX = w / 2 + 10;
-      const centerY = h / 2 + 6;
+    // Axis scale markers
+    ctx.fillStyle = 'rgba(241, 245, 249, 0.5)';
+    ctx.font = '10px monospace';
+    for (const tx of [-4, -2, 2, 4]) {
+      ctx.fillText(String(tx), cx + tx * scaleX - 4, cy + 12);
+    }
+    for (const ty of [-2, 2]) {
+      ctx.fillText(String(ty), cx + 6, cy - ty * scaleY + 3);
+    }
 
-      const cubicY = (xVal: number) =>
-        centerY - scaleK * (xVal * xVal * xVal - 3 * xVal) * 20;
-
+    const trimmed = expression.trim();
+    if (!trimmed) {
+      ctx.fillStyle = 'rgba(241, 245, 249, 0.55)';
+      ctx.font = '12px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('Blank Graph Canvas', cx, cy - 12);
+      ctx.textAlign = 'start';
+    } else if (evaluated && !parseError) {
       ctx.strokeStyle = '#10B981';
       ctx.lineWidth = 2.5;
       ctx.beginPath();
-      for (let px = 36; px < w - 18; px += 2) {
-        const xv = (px - centerX) / 55;
-        const py = cubicY(xv);
-        if (px === 36) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      }
-      ctx.stroke();
 
-      const pxProbe = centerX + probeX * 55;
-      const pyProbe = cubicY(probeX);
-      const deriv = scaleK * (3 * probeX * probeX - 3);
-      const screenSlope = (-deriv * 20) / 55;
+      let started = false;
+      let prevPy = 0;
 
-      ctx.strokeStyle = '#FDE047';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(pxProbe - 40, pyProbe - screenSlope * 40);
-      ctx.lineTo(pxProbe + 40, pyProbe + screenSlope * 40);
-      ctx.stroke();
-
-      ctx.fillStyle = '#EF4444';
-      ctx.beginPath();
-      ctx.arc(pxProbe, pyProbe, 5, 0, Math.PI * 2);
-      ctx.fill();
-
-      const secondDeriv = scaleK * 6 * probeX;
-      ctx.fillStyle = '#F1F5F9';
-      ctx.font = '11px monospace';
-      ctx.fillText(
-        `x₀=${probeX.toFixed(2)} | f'(x₀)=${deriv.toFixed(2)} | f''(x₀)=${secondDeriv.toFixed(2)}`,
-        38,
-        25
-      );
-    } else if (modelId === 'math-riemann') {
-      const upperX = 80 + (paramA / 100) * 240;
-      const numRects = Math.max(4, Math.round(4 + (paramB / 100) * 20));
-      const f = (px: number) => {
-        const u = (px - 32) / 90;
-        return h - 26 - u * Math.exp(0.45 * u) * 18;
-      };
-
-      const stepW = (upperX - 32) / numRects;
-      ctx.fillStyle = 'rgba(16, 185, 129, 0.28)';
-      ctx.strokeStyle = 'rgba(16, 185, 129, 0.65)';
-      for (let i = 0; i < numRects; i++) {
-        const rx = 32 + i * stepW;
-        const ry = f(rx + stepW * 0.5);
-        ctx.fillRect(rx, ry, stepW, h - 26 - ry);
-        ctx.strokeRect(rx, ry, stepW, h - 26 - ry);
-      }
-
-      ctx.strokeStyle = '#FDE047';
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      for (let px = 32; px < w - 16; px += 2) {
-        const py = f(px);
-        if (px === 32) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      }
-      ctx.stroke();
-
-      const boundVal = ((upperX - 32) / 90).toFixed(2);
-      ctx.fillStyle = '#F1F5F9';
-      ctx.font = '11px monospace';
-      ctx.fillText(
-        `∫₀^${boundVal} x·eˣ dx | Sub-intervals N = ${numRects}`,
-        38,
-        25
-      );
-    } else if (modelId === 'math-ode') {
-      const kRate = 0.4 + (paramA / 100) * 1.8;
-      const y0Amp = 30 + (paramB / 100) * 95;
-
-      ctx.strokeStyle = 'rgba(148, 163, 184, 0.35)';
-      ctx.lineWidth = 1;
-      for (let gx = 48; gx < w - 20; gx += 26) {
-        for (let gy = 36; gy < h - 32; gy += 22) {
-          const yVal = h - 26 - gy;
-          const dy = -kRate * (yVal / 90);
-          const angle = Math.atan2(-dy * 12, 12);
-          ctx.beginPath();
-          ctx.moveTo(gx - 6 * Math.cos(angle), gy - 6 * Math.sin(angle));
-          ctx.lineTo(gx + 6 * Math.cos(angle), gy + 6 * Math.sin(angle));
-          ctx.stroke();
+      for (let px = 0; px <= w; px += 1) {
+        const xVal = (px - cx) / scaleX;
+        const yVal = evaluated(xVal, paramA, paramB);
+        if (!Number.isFinite(yVal)) {
+          started = false;
+          continue;
         }
-      }
-
-      ctx.strokeStyle = '#10B981';
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      for (let px = 32; px < w - 16; px += 2) {
-        const t = (px - 32) / 95;
-        const py = h - 26 - y0Amp * Math.exp(-kRate * t);
-        if (px === 32) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      }
-      ctx.stroke();
-
-      ctx.fillStyle = '#F1F5F9';
-      ctx.font = '11px monospace';
-      ctx.fillText(
-        `y(t) = y₀·e^(-kt) | k = ${kRate.toFixed(2)} s⁻¹ | y₀ = ${y0Amp.toFixed(0)}`,
-        38,
-        25
-      );
-    } else if (modelId === 'phys-shm') {
-      const omega = 1.8 + (paramA / 100) * 4.5;
-      const damping = (paramB / 100) * 0.45;
-      const midY = (h - 26 + 24) / 2;
-
-      ctx.strokeStyle = 'rgba(253, 224, 71, 0.3)';
-      ctx.setLineDash([4, 4]);
-      ctx.beginPath();
-      ctx.moveTo(32, midY);
-      ctx.lineTo(w - 16, midY);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      ctx.strokeStyle = '#10B981';
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      for (let px = 32; px < w - 16; px += 2) {
-        const t = (px - 32) / 65;
-        const env = 54 * Math.exp(-damping * t);
-        const py = midY - env * Math.cos(omega * t);
-        if (px === 32) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      }
-      ctx.stroke();
-
-      ctx.fillStyle = '#F1F5F9';
-      ctx.font = '11px monospace';
-      ctx.fillText(
-        `SHM: ω = ${omega.toFixed(1)} rad/s | Damping ζ = ${damping.toFixed(2)}`,
-        38,
-        25
-      );
-    } else if (modelId === 'phys-orbit') {
-      const cx = w / 2 + 10;
-      const cy = h / 2 + 4;
-      const orbitR = 24 + (paramA / 100) * 48;
-      const massFactor = 0.6 + (paramB / 100) * 1.4;
-
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.25)';
-      ctx.lineWidth = 1;
-      [22, 36, 52, 68].forEach((r) => {
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.stroke();
-      });
-
-      ctx.fillStyle = '#10B981';
-      ctx.beginPath();
-      ctx.arc(cx, cy, 10 * Math.sqrt(massFactor), 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.strokeStyle = '#FDE047';
-      ctx.lineWidth = 2.2;
-      ctx.beginPath();
-      ctx.arc(cx, cy, orbitR, 0, Math.PI * 2);
-      ctx.stroke();
-
-      ctx.fillStyle = '#EF4444';
-      ctx.beginPath();
-      ctx.arc(cx + orbitR, cy, 4.5, 0, Math.PI * 2);
-      ctx.fill();
-
-      const vEsc = (11.2 * Math.sqrt(massFactor / (orbitR / 30))).toFixed(1);
-      ctx.fillStyle = '#F1F5F9';
-      ctx.font = '11px monospace';
-      ctx.fillText(
-        `r = ${(orbitR / 10).toFixed(1)} R₀ | v_esc = ${vEsc} km/s | ΔV_orbit = 0`,
-        38,
-        25
-      );
-    } else if (modelId === 'chem-lechatelier') {
-      const pressureShift = (paramA - 50) / 100;
-      const rateK = 0.8 + (paramB / 100) * 2.0;
-
-      ctx.strokeStyle = '#10B981';
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      for (let px = 32; px < w - 16; px += 2) {
-        const t = (px - 32) / 75;
-        const eqP = 0.58 + pressureShift * 0.28;
-        const val = eqP * (1 - Math.exp(-rateK * t));
-        const py = h - 26 - val * 115;
-        if (px === 32) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      }
-      ctx.stroke();
-
-      ctx.strokeStyle = '#F59E0B';
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      for (let px = 32; px < w - 16; px += 2) {
-        const t = (px - 32) / 75;
-        const eqR = 0.42 - pressureShift * 0.22;
-        const val = eqR + (0.95 - eqR) * Math.exp(-rateK * t);
-        const py = h - 26 - val * 115;
-        if (px === 32) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      }
-      ctx.stroke();
-
-      ctx.fillStyle = '#F1F5F9';
-      ctx.font = '11px monospace';
-      ctx.fillText(
-        `Equilibrium: k_f = ${rateK.toFixed(2)} | Yield Shift = ${(pressureShift * 100).toFixed(0)}%`,
-        38,
-        25
-      );
-    } else if (modelId === 'math-secant') {
-      const stepH = Math.max(8, (paramA / 100) * 120);
-      const x0 = 55 + (paramB / 100) * 110;
-
-      const f = (x: number) => {
-        const norm = (x - 45) / 42;
-        return h - 34 - (norm * norm * 26 + Math.sin(norm) * 14);
-      };
-
-      ctx.strokeStyle = '#10B981';
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      for (let px = 34; px < w - 18; px += 3) {
-        const py = f(px);
-        if (px === 34) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      }
-      ctx.stroke();
-
-      const x1 = Math.min(w - 24, x0 + stepH);
-      const y0 = f(x0);
-      const y1 = f(x1);
-      const slope = (y0 - y1) / Math.max(1, x1 - x0);
-
-      ctx.strokeStyle = '#FDE047';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([5, 4]);
-      ctx.beginPath();
-      ctx.moveTo(x0 - 35, y0 + slope * 35);
-      ctx.lineTo(x1 + 35, y1 - slope * 35);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      ctx.fillStyle = '#EF4444';
-      ctx.beginPath();
-      ctx.arc(x0, y0, 5, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.fillStyle = '#FDE047';
-      ctx.beginPath();
-      ctx.arc(x1, y1, 5, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.fillStyle = '#F1F5F9';
-      ctx.font = '11px monospace';
-      ctx.fillText(
-        `Δx (h) = ${(stepH / 40).toFixed(2)}  |  Secant Gradient m = ${slope.toFixed(2)}`,
-        42,
-        26
-      );
-    } else if (modelId === 'phys-projectile') {
-      const angleDeg = 15 + (paramA / 100) * 65;
-      const angleRad = (angleDeg * Math.PI) / 180;
-      const v0 = 35 + (paramB / 100) * 45;
-      const g = 9.81;
-
-      ctx.strokeStyle = '#FDE047';
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-
-      let apexX = 32;
-      let apexY = h - 26;
-
-      for (let t = 0; t <= 12; t += 0.12) {
-        const dx = v0 * Math.cos(angleRad) * t * 0.85;
-        const dy = (v0 * Math.sin(angleRad) * t - 0.5 * g * t * t) * 0.85;
-        const px = 32 + dx;
-        const py = h - 26 - dy;
-        if (py < apexY) {
-          apexY = py;
-          apexX = px;
+        const py = cy - yVal * scaleY;
+        if (py < -h * 2 || py > h * 3) {
+          started = false;
+          continue;
         }
-        if (py > h - 25 && t > 0.2) break;
-        if (t === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
+        if (!started || Math.abs(py - prevPy) > h * 0.85) {
+          ctx.moveTo(px, py);
+          started = true;
+        } else {
+          ctx.lineTo(px, py);
+        }
+        prevPy = py;
       }
       ctx.stroke();
-
-      ctx.fillStyle = '#10B981';
-      ctx.beginPath();
-      ctx.arc(apexX, apexY, 5, 0, Math.PI * 2);
-      ctx.fill();
-
-      const rangeMeters = ((v0 * v0 * Math.sin(2 * angleRad)) / g).toFixed(1);
-      const maxHeight = (
-        (v0 * v0 * Math.pow(Math.sin(angleRad), 2)) /
-        (2 * g)
-      ).toFixed(1);
 
       ctx.fillStyle = '#F1F5F9';
       ctx.font = '11px monospace';
       ctx.fillText(
-        `θ = ${angleDeg.toFixed(0)}° | v₀ = ${v0.toFixed(0)} m/s | Range = ${rangeMeters}m | Hmax = ${maxHeight}m`,
-        40,
-        26
-      );
-    } else {
-      const tempFactor = 0.65 + (paramA / 100) * 0.9;
-      const eaX = 135 + (paramB / 100) * 130;
-
-      ctx.strokeStyle = '#38BDF8';
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-
-      for (let x = 32; x < w - 16; x += 2) {
-        const e = (x - 32) / (55 * tempFactor);
-        const prob =
-          (e * e * Math.exp(-e * 1.15)) / (tempFactor * 0.55);
-        const py = h - 26 - prob * 145;
-
-        if (x === 32) ctx.moveTo(x, py);
-        else ctx.lineTo(x, py);
-      }
-      ctx.stroke();
-
-      ctx.fillStyle = 'rgba(16, 185, 129, 0.35)';
-      ctx.beginPath();
-      ctx.moveTo(eaX, h - 26);
-      for (let x = eaX; x < w - 16; x += 2) {
-        const e = (x - 32) / (55 * tempFactor);
-        const prob =
-          (e * e * Math.exp(-e * 1.15)) / (tempFactor * 0.55);
-        const py = h - 26 - prob * 145;
-        ctx.lineTo(x, py);
-      }
-      ctx.lineTo(w - 16, h - 26);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.strokeStyle = '#EF4444';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([4, 3]);
-      ctx.beginPath();
-      ctx.moveTo(eaX, 24);
-      ctx.lineTo(eaX, h - 26);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      ctx.fillStyle = '#F1F5F9';
-      ctx.font = '11px monospace';
-      ctx.fillText(
-        `T = ${(273 + paramA * 2.5).toFixed(0)} K  |  Activation Barrier Ea = ${(30 + paramB * 0.7).toFixed(1)} kJ/mol`,
-        40,
-        26
+        `y = ${trimmed.slice(0, 26)} | a=${paramA.toFixed(1)} b=${paramB.toFixed(1)}`,
+        10,
+        18
       );
     }
 
     ctx.restore();
-  }, [modelId, paramA, paramB]);
+  }, [expression, paramA, paramB, evaluated, parseError]);
 
   return (
-    <div className="space-y-4">
-      <canvas
-        ref={canvasRef}
-        width={360}
-        height={175}
-        className="w-full h-52 rounded-xl border-2 border-[#3E2723] shadow-inner bg-[#14241E]"
-      />
-
-      {/* Tactile Brass & Wooden Parameter Sliders */}
-      <div className="space-y-3 pt-1">
-        <div>
-          <div className="flex items-center justify-between text-xs font-mono font-bold text-[#5D4037] mb-1">
-            <span>{meta.sliderA}</span>
-            <span>{paramA}%</span>
-          </div>
-          <input
-            id="sim-brass-slider-a"
-            type="range"
-            min={5}
-            max={95}
-            value={paramA}
-            onChange={(e) => setParamA(Number(e.target.value))}
-            className="w-full h-2.5 rounded-lg appearance-none bg-gradient-to-r from-[#D4B996] via-[#B45309] to-[#8D6E63] accent-[#5D4037] cursor-pointer"
-          />
-        </div>
-
-        <div>
-          <div className="flex items-center justify-between text-xs font-mono font-bold text-[#5D4037] mb-1">
-            <span>{meta.sliderB}</span>
-            <span>{paramB}%</span>
-          </div>
-          <input
-            id="sim-wooden-slider-b"
-            type="range"
-            min={5}
-            max={95}
-            value={paramB}
-            onChange={(e) => setParamB(Number(e.target.value))}
-            className="w-full h-2.5 rounded-lg appearance-none bg-gradient-to-r from-[#D4B996] via-[#10B981] to-[#1A2E26] accent-[#1A2E26] cursor-pointer"
-          />
-        </div>
-      </div>
-    </div>
+    <canvas
+      ref={canvasRef}
+      width={360}
+      height={190}
+      className="w-full h-52 rounded-xl border-2 border-[#3E2723] shadow-inner bg-[#14241E]"
+    />
   );
 }
 
@@ -543,7 +201,7 @@ export function StickyNoteDesk() {
     stickyNotes,
     cornellNotes,
     setStudioTab,
-    setTopicLabModel,
+    setTopicLabExpression,
     addStickyNote,
     updateStickyMastery,
     deleteStickyNote,
@@ -559,6 +217,10 @@ export function StickyNoteDesk() {
   const [newBack, setNewBack] = useState('');
   const [newColor, setNewColor] =
     useState<StoredStickyNote['color']>('yellow');
+
+  // Graph parameter sliders for custom equations (blank until user plots)
+  const [paramA, setParamA] = useState(1);
+  const [paramB, setParamB] = useState(0);
 
   // Empty-first Cornell drafts per topic (no pre-seeded notes)
   const [cornellDrafts, setCornellDrafts] = useState<
@@ -662,8 +324,8 @@ export function StickyNoteDesk() {
     setStudioTab(tab);
   };
 
-  const selectedLabId = ((activeNode?.labModel as LabModelId) || '') as LabModelId;
-  const selectedLabMeta = LAB_MODEL_OPTIONS.find((m) => m.id === selectedLabId);
+  const rawLabExpression = activeNode?.labExpression ?? '';
+  const compiledGraph = compileMathExpression(rawLabExpression);
 
   const STUDIO_TABS: Array<{
     id: StudioTab;
@@ -679,7 +341,7 @@ export function StickyNoteDesk() {
     },
     {
       id: 'simulation',
-      label: 'STEM Lab',
+      label: 'Graph Pad',
       icon: Sliders,
     },
     {
@@ -695,7 +357,7 @@ export function StickyNoteDesk() {
 
   return (
     <aside
-      aria-label="Right Panel: 3D Tactile Sticky Notes & Simulation Studio"
+      aria-label="Right Panel: 3D Tactile Sticky Notes & Graph Studio"
       className="rounded-2xl border-2 border-[#B89972] bg-[#F3E5D0]/90 p-4 flex flex-col justify-between gap-4 h-full min-h-[760px] shadow-[0_12px_28px_-6px_rgba(30,41,59,0.12)]"
     >
       <div className="space-y-4">
@@ -706,7 +368,7 @@ export function StickyNoteDesk() {
               {currentSubject ? `${currentSubject} Tools` : 'Study Tools'}
             </span>
             <h2 className="text-lg font-bold font-serif text-[#1E293B]">
-              Practice &amp; Lab Studio
+              Notes &amp; Graph
             </h2>
           </div>
 
@@ -1000,58 +662,104 @@ export function StickyNoteDesk() {
             </div>
           )}
 
-          {/* TAB 2: Interactive STEM Simulation Sandbox (Explicitly Selected Per Topic) */}
+          {/* TAB 2: Blank Custom Function Graph Pad */}
           {studioTab === 'simulation' && (
-            <div className="rounded-xl bg-[#FDFBF7] border-2 border-[#1E293B] p-4 school-stamp-card space-y-4">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="rounded-xl bg-[#FDFBF7] border-2 border-[#1E293B] p-4 school-stamp-card space-y-3.5">
+              <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0">
                   <Sliders className="w-4 h-4 text-[#B45309] shrink-0" />
                   <h3 className="text-sm font-bold font-serif text-[#1E293B] truncate">
-                    {selectedLabMeta
-                      ? selectedLabMeta.title
-                      : 'Interactive STEM Lab Bench'}
+                    Function Graph Pad
                   </h3>
                 </div>
-                <select
-                  id="lab-model-selector"
-                  aria-label="Choose interactive STEM simulation"
-                  disabled={!activeNode}
-                  value={selectedLabId}
-                  onChange={(e) => {
-                    if (!activeNode) return;
-                    setTopicLabModel(
-                      activeNode.id,
-                      e.target.value as LabModelId
-                    );
-                    chiptuneAudio.playPaperFlip();
-                  }}
-                  className="px-2.5 py-1 rounded-lg bg-[#F5EBE0] border border-[#1E293B] text-xs font-mono font-bold text-[#1E293B] cursor-pointer disabled:opacity-50"
-                >
-                  <option value="">None (Blank Bench)</option>
-                  {LAB_MODEL_OPTIONS.map((opt) => (
-                    <option key={opt.id} value={opt.id}>
-                      {opt.category}: {opt.title}
-                    </option>
-                  ))}
-                </select>
+                {activeNode && rawLabExpression.trim() && (
+                  <button
+                    id="clear-graph-expr-btn"
+                    type="button"
+                    onClick={() => {
+                      setTopicLabExpression(activeNode.id, '');
+                      chiptuneAudio.playPaperFlip();
+                    }}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[#F5EBE0] hover:bg-[#E6D5B8] border border-[#C8AE8D] text-xs font-mono font-bold text-[#1E293B] cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                    Clear
+                  </button>
+                )}
               </div>
 
-              {selectedLabId && selectedLabMeta ? (
-                <StemSimulationSandbox
-                  modelId={selectedLabId}
-                  meta={selectedLabMeta}
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="custom-graph-expr-input"
+                  className="text-xs font-mono font-bold text-slate-600 block"
+                >
+                  y =
+                </label>
+                <input
+                  id="custom-graph-expr-input"
+                  type="text"
+                  disabled={!activeNode}
+                  placeholder={
+                    activeNode
+                      ? 'Enter math expression with x, a, b'
+                      : 'Open a topic first to plot on graph'
+                  }
+                  value={rawLabExpression}
+                  onChange={(e) => {
+                    if (!activeNode) return;
+                    setTopicLabExpression(activeNode.id, e.target.value);
+                  }}
+                  className="w-full px-3 py-2 rounded-lg bg-white disabled:bg-[#F5EBE0]/60 border border-[#C8AE8D] text-xs font-mono text-[#1E293B] placeholder:text-slate-400 focus:outline-none focus:border-[#1A2E26]"
                 />
-              ) : (
-                <div className="h-52 rounded-xl border-2 border-dashed border-[#3E2723]/50 bg-[#14241E] text-[#F1F5F9] p-5 flex flex-col items-center justify-center text-center gap-2">
-                  <Sliders className="w-6 h-6 text-[#FDE047]" />
-                  <p className="text-xs sm:text-sm font-bold">
-                    Lab Bench Ready &amp; Unassigned
+                {compiledGraph.error && rawLabExpression.trim() && (
+                  <p className="text-xs font-mono text-[#991B1B]">
+                    {compiledGraph.error}
                   </p>
-                  <p className="text-xs text-slate-300 max-w-xs">
-                    {activeNode
-                      ? 'Pick a Maths, Physics, or Chemistry simulation model from the selector above when needed.'
-                      : 'Open a notebook and topic first to attach a STEM visualizer.'}
-                  </p>
+                )}
+              </div>
+
+              <FunctionGraphCanvas
+                expression={rawLabExpression}
+                paramA={paramA}
+                paramB={paramB}
+                evaluated={compiledGraph.evaluate}
+                parseError={compiledGraph.error}
+              />
+
+              {compiledGraph.evaluate && !compiledGraph.error && (
+                <div className="space-y-2.5 pt-1">
+                  <div>
+                    <div className="flex items-center justify-between text-xs font-mono font-bold text-[#5D4037] mb-1">
+                      <span>Parameter a</span>
+                      <span>{paramA.toFixed(1)}</span>
+                    </div>
+                    <input
+                      id="sim-brass-slider-a"
+                      type="range"
+                      min={-5}
+                      max={5}
+                      step={0.1}
+                      value={paramA}
+                      onChange={(e) => setParamA(Number(e.target.value))}
+                      className="w-full h-2.5 rounded-lg appearance-none bg-gradient-to-r from-[#D4B996] via-[#B45309] to-[#8D6E63] accent-[#5D4037] cursor-pointer"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between text-xs font-mono font-bold text-[#5D4037] mb-1">
+                      <span>Parameter b</span>
+                      <span>{paramB.toFixed(1)}</span>
+                    </div>
+                    <input
+                      id="sim-wooden-slider-b"
+                      type="range"
+                      min={-5}
+                      max={5}
+                      step={0.1}
+                      value={paramB}
+                      onChange={(e) => setParamB(Number(e.target.value))}
+                      className="w-full h-2.5 rounded-lg appearance-none bg-gradient-to-r from-[#D4B996] via-[#10B981] to-[#1A2E26] accent-[#1A2E26] cursor-pointer"
+                    />
+                  </div>
                 </div>
               )}
             </div>
@@ -1097,7 +805,7 @@ export function StickyNoteDesk() {
                       <textarea
                         id="cornell-cues-input"
                         rows={7}
-                        placeholder="Key questions, keywords, or exam traps..."
+                        placeholder="Recall prompts or keywords..."
                         value={cuesText}
                         onChange={(e) =>
                           updateCornellDraft('cues', e.target.value)
@@ -1116,7 +824,7 @@ export function StickyNoteDesk() {
                       <textarea
                         id="cornell-notes-input"
                         rows={7}
-                        placeholder="Write your main derivations, mechanisms, or structured notes..."
+                        placeholder="Structured notes or key steps..."
                         value={notesText}
                         onChange={(e) =>
                           updateCornellDraft('notes', e.target.value)
@@ -1136,7 +844,7 @@ export function StickyNoteDesk() {
                     <input
                       id="cornell-summary-input"
                       type="text"
-                      placeholder="Summarize the takeaway concept in one crisp sentence..."
+                      placeholder="Short summary in your own words..."
                       value={summaryText}
                       onChange={(e) =>
                         updateCornellDraft('summary', e.target.value)

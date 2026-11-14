@@ -3,7 +3,6 @@ import {
   geminiRotator,
   GeminiConfigError,
   type AskBarnabyParams,
-  type ScaffoldTopicParams,
 } from '@/lib/gemini';
 
 export async function GET() {
@@ -24,9 +23,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as
-      | ({ action?: 'chat' } & AskBarnabyParams)
-      | ({ action: 'scaffold_topic' } & ScaffoldTopicParams);
+    const body = (await request.json()) as AskBarnabyParams;
 
     if (!body || typeof body !== 'object') {
       return NextResponse.json(
@@ -35,21 +32,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (body.action === 'scaffold_topic') {
-      if (!body.topicTitle || !body.subject) {
-        return NextResponse.json(
-          {
-            code: 'MISSING_FIELDS',
-            error: 'Missing required subject or topicTitle parameter',
-          },
-          { status: 400 }
-        );
-      }
-      const result = await geminiRotator.scaffoldTopicWithRotator(body);
-      return NextResponse.json(result);
-    }
-
-    if (typeof (body as AskBarnabyParams).userMessage !== 'string') {
+    if (typeof body.userMessage !== 'string') {
       return NextResponse.json(
         {
           code: 'MISSING_MESSAGE',
@@ -59,9 +42,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = await geminiRotator.executeWithRotator(
-      body as AskBarnabyParams
-    );
+    const result = await geminiRotator.executeWithRotator(body);
     return NextResponse.json(result);
   } catch (error) {
     if (error instanceof GeminiConfigError) {

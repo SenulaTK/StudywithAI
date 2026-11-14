@@ -11,15 +11,15 @@ import {
   PersonaSchoolCurtain,
   PersonaMenuStage,
 } from '@/components/transitions/PersonaSchoolTransition';
-import { useStudyDeskStore, type SyllabusBoard } from '@/lib/store';
+import { useStudyDeskStore } from '@/lib/store';
 import { chiptuneAudio } from '@/lib/audio';
-import { storageAdapter } from '@/lib/storage';
+import { DESK_SCHEMA_VERSION, storageAdapter } from '@/lib/storage';
 import { geminiRotator } from '@/lib/gemini';
 
 const STATION_NAMES = {
   left: 'Chalkboard Roadmap',
   center: 'Open Workbook & Professor Barnaby',
-  right: 'Practice & Lab Studio',
+  right: 'Notes & Graph',
 } as const;
 
 export default function StudyDeskPage() {
@@ -46,11 +46,13 @@ export default function StudyDeskPage() {
 
   const [isHydrated, setIsHydrated] = useState(false);
 
-  // Hydrate workspace from Local-First Dexie IndexedDB & probe Gemini key configuration
+  // Purge legacy pre-production demo DB & hydrate only verified clean-v2 user state
   useEffect(() => {
     let mounted = true;
     async function hydrateWorkspace() {
       try {
+        await storageAdapter.purgeLegacyDemoDb();
+
         const [savedStickies, savedBackpack, savedCornell, savedMeta, keyStatus] =
           await Promise.all([
             storageAdapter.loadStickyNotes(),
@@ -64,34 +66,27 @@ export default function StudyDeskPage() {
 
         setGeminiHasKey(keyStatus.anyConfigured);
 
-        const hasSavedData =
-          savedStickies.length > 0 ||
-          savedBackpack.length > 0 ||
-          savedCornell.length > 0 ||
-          savedMeta !== null;
-
-        if (hasSavedData) {
+        if (savedMeta && savedMeta.schemaVersion === DESK_SCHEMA_VERSION) {
           hydrateFromArchive({
-            userXP: savedMeta?.userXP ?? 0,
-            streakCount: savedMeta?.streakCount ?? 0,
-            lastStudyDate: savedMeta?.lastStudyDate ?? null,
-            currentSubject: savedMeta?.currentSubject ?? '',
-            syllabusBoard:
-              (savedMeta?.syllabusBoard as SyllabusBoard) ?? 'General',
-            activeTopicId: savedMeta?.activeTopicId ?? '',
-            subjects: savedMeta?.subjects ?? [],
-            roadmapState: savedMeta?.roadmapState ?? [],
-            workbookDialogues: savedMeta?.workbookDialogues ?? {},
-            quizCompletedIds: savedMeta?.quizCompletedIds ?? {},
-            selectedAnswers: savedMeta?.selectedAnswers ?? {},
-            topicBadges: savedMeta?.topicBadges,
+            userXP: savedMeta.userXP ?? 0,
+            streakCount: savedMeta.streakCount ?? 0,
+            lastStudyDate: savedMeta.lastStudyDate ?? null,
+            currentSubject: savedMeta.currentSubject ?? '',
+            syllabusBoard: savedMeta.syllabusBoard ?? '',
+            activeTopicId: savedMeta.activeTopicId ?? '',
+            subjects: savedMeta.subjects ?? [],
+            roadmapState: savedMeta.roadmapState ?? [],
+            workbookDialogues: savedMeta.workbookDialogues ?? {},
+            quizCompletedIds: savedMeta.quizCompletedIds ?? {},
+            selectedAnswers: savedMeta.selectedAnswers ?? {},
+            topicBadges: savedMeta.topicBadges,
             stickyNotes: savedStickies,
             backpackFiles: savedBackpack,
             cornellNotes: savedCornell,
           });
         }
       } catch {
-        // Fallback to clean empty state if IndexedDB is blocked
+        // Fallback to clean empty state if IndexedDB is restricted
       } finally {
         if (mounted) {
           setIsHydrated(true);
@@ -105,7 +100,7 @@ export default function StudyDeskPage() {
     };
   }, [hydrateFromArchive, setGeminiHasKey]);
 
-  // Persist updates to Dexie IndexedDB after initial hydration
+  // Persist user updates to clean IndexedDB after hydration
   useEffect(() => {
     if (!isHydrated) return;
     storageAdapter.saveStickyNotes(stickyNotes).catch(() => {});
@@ -131,6 +126,7 @@ export default function StudyDeskPage() {
     });
     storageAdapter
       .saveDeskMeta({
+        schemaVersion: DESK_SCHEMA_VERSION,
         userXP,
         streakCount,
         lastStudyDate,
@@ -169,12 +165,12 @@ export default function StudyDeskPage() {
         {/* Top Tactile Desk Header */}
         <DeskHeader />
 
-        {/* Master 3-Panel Spatial Desk Workspace with Dramatic Persona Stage Transitions */}
+        {/* Master 3-Panel Spatial Desk Workspace */}
         <main className="flex-1 w-full max-w-[1800px] mx-auto px-3 sm:px-5 py-4 overflow-x-clip">
           <PersonaMenuStage stageKey={cameraPan}>
             {cameraPan === 'overview' ? (
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
-                {/* LEFT PANEL (3 cols): Chalkboard Scheme of Work Roadmap */}
+                {/* LEFT PANEL (3 cols): Chalkboard Roadmap */}
                 <motion.div
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -202,7 +198,7 @@ export default function StudyDeskPage() {
                   <WorkbookCanvas />
                 </motion.div>
 
-                {/* RIGHT PANEL (4 cols): 3D Sticky Note Desk & Lab Studio */}
+                {/* RIGHT PANEL (4 cols): 3D Sticky Note Desk & Blank Graph/Cornell Studio */}
                 <motion.div
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -217,7 +213,7 @@ export default function StudyDeskPage() {
                 </motion.div>
               </div>
             ) : (
-              /* Focused Station View (Chalkboard / Workbook / 3D Studio) */
+              /* Focused Station View */
               <div className="max-w-5xl mx-auto space-y-3">
                 <div className="flex items-center justify-between px-1">
                   <button

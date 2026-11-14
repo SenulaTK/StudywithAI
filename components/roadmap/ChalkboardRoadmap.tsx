@@ -21,19 +21,9 @@ import {
   useStudyDeskStore,
   type BadgeStatus,
   type RoadmapTopicNode,
-  type SyllabusBoard,
 } from '@/lib/store';
 import { chiptuneAudio } from '@/lib/audio';
 import { storageAdapter } from '@/lib/storage';
-
-const BOARDS: SyllabusBoard[] = [
-  'General',
-  'AQA',
-  'Edexcel',
-  'OCR',
-  'IB',
-  'AP',
-];
 
 const BADGE_CONFIG: Record<
   BadgeStatus,
@@ -112,12 +102,12 @@ export function ChalkboardRoadmap() {
     removeBackpackFile,
   } = useStudyDeskStore();
 
-  // Inline create-first-notebook form state
+  // Blank first-notebook creation state
   const [nbName, setNbName] = useState('');
-  const [nbBoard, setNbBoard] = useState<SyllabusBoard>('General');
+  const [nbBoard, setNbBoard] = useState('');
   const [confirmDeleteNotebook, setConfirmDeleteNotebook] = useState(false);
 
-  // Inline create topic form state
+  // Blank topic creation state
   const [showAddTopic, setShowAddTopic] = useState(false);
   const [topicCode, setTopicCode] = useState('');
   const [topicTitle, setTopicTitle] = useState('');
@@ -250,6 +240,7 @@ export function ChalkboardRoadmap() {
     chiptuneAudio.playSchoolBellChime();
     createNotebook(nbName, nbBoard);
     setNbName('');
+    setNbBoard('');
   };
 
   const handleCreateTopicSubmit = (e: React.FormEvent) => {
@@ -270,7 +261,7 @@ export function ChalkboardRoadmap() {
 
   return (
     <aside
-      aria-label="Left Panel: Chalkboard Scheme of Work Roadmap"
+      aria-label="Left Panel: Chalkboard Roadmap"
       className="flex flex-col h-full rounded-2xl overflow-hidden border-4 border-[#4E342E] shadow-[0_12px_28px_-6px_rgba(30,41,59,0.22)]"
     >
       <div className="chalkboard-surface p-4 text-[#F1F5F9] flex-1 flex flex-col justify-between gap-4">
@@ -280,13 +271,11 @@ export function ChalkboardRoadmap() {
             <div className="min-w-0">
               <span className="text-xs font-mono uppercase tracking-wider text-[#10B981] font-bold block">
                 {currentSubject
-                  ? `${syllabusBoard} Curriculum`
-                  : 'Desk Curriculum'}
+                  ? syllabusBoard || 'Notebook'
+                  : 'Study Desk'}
               </span>
               <h2 className="text-lg font-bold font-serif text-[#FDFBF7] truncate">
-                {currentSubject
-                  ? `${currentSubject} Roadmap`
-                  : 'Empty Chalkboard'}
+                {currentSubject ? `${currentSubject} Roadmap` : 'Chalkboard'}
               </h2>
             </div>
 
@@ -321,7 +310,7 @@ export function ChalkboardRoadmap() {
             )}
           </div>
 
-          {/* Clean Scholar XP & Streak Bar */}
+          {/* Scholar XP & Streak Bar */}
           <div className="space-y-1.5 px-1">
             <div className="flex items-center justify-between text-xs">
               <span className="font-bold text-[#FDE047] flex items-center gap-1.5">
@@ -345,7 +334,7 @@ export function ChalkboardRoadmap() {
             </div>
           </div>
 
-          {/* CASE 1: No notebooks created yet */}
+          {/* Blank Slate: Create First Notebook */}
           {!currentSubject ? (
             <form
               onSubmit={handleCreateFirstNotebook}
@@ -358,39 +347,32 @@ export function ChalkboardRoadmap() {
                 </h3>
               </div>
               <p className="text-xs text-slate-300 leading-relaxed">
-                Start fresh by naming a subject notebook. You can build custom
-                topics, flashcards, and notes inside it.
+                Start with a blank notebook and add only the topics you want to
+                study.
               </p>
               <input
                 id="chalkboard-first-notebook-input"
                 type="text"
                 required
-                placeholder="Subject name (e.g. Calculus, Biology)..."
+                placeholder="Notebook name"
                 value={nbName}
                 onChange={(e) => setNbName(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg bg-[#14241E] border border-emerald-700 text-xs text-[#FDFBF7] placeholder:text-slate-400 focus:outline-none focus:border-[#FDE047]"
               />
-              <div className="flex items-center gap-2">
-                <select
-                  aria-label="Choose curriculum standard"
-                  value={nbBoard}
-                  onChange={(e) => setNbBoard(e.target.value as SyllabusBoard)}
-                  className="px-2.5 py-2 rounded-lg bg-[#14241E] border border-emerald-700 text-xs font-mono text-[#FDFBF7] focus:outline-none focus:border-[#FDE047]"
-                >
-                  {BOARDS.map((b) => (
-                    <option key={b} value={b}>
-                      {b}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  id="chalkboard-create-notebook-btn"
-                  type="submit"
-                  className="flex-1 py-2 px-3 rounded-lg bg-[#FDE047] hover:bg-yellow-300 text-[#1E293B] text-xs font-bold cursor-pointer transition-colors"
-                >
-                  Open Notebook
-                </button>
-              </div>
+              <input
+                type="text"
+                placeholder="Course or curriculum tag (optional)"
+                value={nbBoard}
+                onChange={(e) => setNbBoard(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-[#14241E] border border-emerald-700 text-xs text-[#FDFBF7] placeholder:text-slate-400 focus:outline-none focus:border-[#FDE047]"
+              />
+              <button
+                id="chalkboard-create-notebook-btn"
+                type="submit"
+                className="w-full py-2 px-3 rounded-lg bg-[#FDE047] hover:bg-yellow-300 text-[#1E293B] text-xs font-bold cursor-pointer transition-colors"
+              >
+                Create Notebook
+              </button>
             </form>
           ) : (
             <div className="space-y-3">
@@ -408,7 +390,7 @@ export function ChalkboardRoadmap() {
                       <span className="text-xs font-mono font-bold text-[#FDE047]">
                         {subjectNodes.length === 0
                           ? `Add First Topic to ${currentSubject}`
-                          : 'New Topic Node'}
+                          : 'New Topic'}
                       </span>
                       {subjectNodes.length > 0 && (
                         <button
@@ -423,7 +405,7 @@ export function ChalkboardRoadmap() {
                     <div className="grid grid-cols-3 gap-2">
                       <input
                         type="text"
-                        placeholder="Code (T1)"
+                        placeholder="Code"
                         value={topicCode}
                         onChange={(e) => setTopicCode(e.target.value)}
                         className="col-span-1 px-2.5 py-1.5 rounded-lg bg-[#14241E] border border-emerald-800 text-xs text-[#FDFBF7] placeholder:text-slate-400 focus:outline-none focus:border-[#FDE047]"
@@ -432,7 +414,7 @@ export function ChalkboardRoadmap() {
                         id="chalkboard-new-topic-title"
                         type="text"
                         required
-                        placeholder="Topic title..."
+                        placeholder="Topic title"
                         value={topicTitle}
                         onChange={(e) => setTopicTitle(e.target.value)}
                         className="col-span-2 px-2.5 py-1.5 rounded-lg bg-[#14241E] border border-emerald-800 text-xs text-[#FDFBF7] placeholder:text-slate-400 focus:outline-none focus:border-[#FDE047]"
@@ -440,7 +422,7 @@ export function ChalkboardRoadmap() {
                     </div>
                     <input
                       type="text"
-                      placeholder="Short focus or learning objective (optional)..."
+                      placeholder="Short note (optional)"
                       value={topicSubtitle}
                       onChange={(e) => setTopicSubtitle(e.target.value)}
                       className="w-full px-2.5 py-1.5 rounded-lg bg-[#14241E] border border-emerald-800 text-xs text-[#FDFBF7] placeholder:text-slate-400 focus:outline-none focus:border-[#FDE047]"
@@ -539,9 +521,11 @@ export function ChalkboardRoadmap() {
                       <h3 className="text-sm font-bold text-[#FDFBF7] mt-1.5 leading-snug">
                         {node.title}
                       </h3>
-                      <p className="text-xs text-slate-300 mt-0.5 line-clamp-1">
-                        {node.subtitle}
-                      </p>
+                      {node.subtitle && (
+                        <p className="text-xs text-slate-300 mt-0.5 line-clamp-1">
+                          {node.subtitle}
+                        </p>
+                      )}
                     </motion.div>
                   );
                 })}
@@ -586,7 +570,7 @@ export function ChalkboardRoadmap() {
           )}
         </div>
 
-        {/* Collapsible Class Notes Backpack Drawer */}
+        {/* Collapsible Notes Backpack Drawer */}
         <div
           onDragOver={(e) => {
             e.preventDefault();
@@ -646,7 +630,7 @@ export function ChalkboardRoadmap() {
                   <p className="text-xs font-medium text-slate-200">
                     {currentSubject
                       ? `Upload PDF or Notes for ${currentSubject}`
-                      : 'Open or create a notebook first to upload notes'}
+                      : 'Create or open a notebook first to attach files'}
                   </p>
                   <input
                     ref={fileInputRef}
@@ -695,7 +679,7 @@ export function ChalkboardRoadmap() {
         </div>
       </div>
 
-      {/* Authentic Classroom Wooden Chalk Ledge with Chalk Sticks */}
+      {/* Wooden Chalk Ledge */}
       <div
         aria-hidden="true"
         className="chalkboard-wood-ledge h-3.5 px-6 flex items-center justify-end gap-3"
