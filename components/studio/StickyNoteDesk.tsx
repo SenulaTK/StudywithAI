@@ -13,8 +13,14 @@ import {
   AlertTriangle,
   Sparkles,
   Save,
+  Trash2,
 } from 'lucide-react';
-import { useStudyDeskStore, type StudioTab } from '@/lib/store';
+import {
+  useStudyDeskStore,
+  LAB_MODEL_OPTIONS,
+  type StudioTab,
+} from '@/lib/store';
+import type { LabModelId } from '@/lib/gemini';
 import { chiptuneAudio } from '@/lib/audio';
 import { storageAdapter, type StoredStickyNote } from '@/lib/storage';
 import { PersonaMenuStage } from '@/components/transitions/PersonaSchoolTransition';
@@ -49,79 +55,17 @@ const STICKY_COLORS: Record<
   },
 };
 
-const TOPIC_SIM_LABELS: Record<
-  string,
-  { title: string; sliderA: string; sliderB: string }
-> = {
-  'math-1': {
-    title: 'M1.1 Secant-to-Tangent Limit Explorer',
-    sliderA: 'Secant Step h (Δx → 0)',
-    sliderB: 'Base Point Coordinate x₀',
-  },
-  'math-2': {
-    title: 'M1.2 Cubic Stationary & Inflection Curvature',
-    sliderA: 'Probe Coordinate x₀',
-    sliderB: 'Cubic Steepness Parameter k',
-  },
-  'math-3': {
-    title: 'M1.3 Integration by Parts Area Accumulator',
-    sliderA: 'Upper Bound b (∫₀ᵇ x·eˣ dx)',
-    sliderB: 'Riemann Sub-Intervals N',
-  },
-  'math-4': {
-    title: 'M1.4 Separable ODE Phase & Decay Field',
-    sliderA: 'Decay Constant k (dy/dt = -ky)',
-    sliderB: 'Initial Condition Amplitude y(0)',
-  },
-  'phys-1': {
-    title: 'P2.1 Ballistic Parabolic Trajectory',
-    sliderA: 'Launch Angle θ (15° → 80°)',
-    sliderB: 'Initial Launch Velocity v₀ (m/s)',
-  },
-  'phys-2': {
-    title: 'P2.2 Simple Harmonic Oscillator & Damping',
-    sliderA: 'Angular Frequency ω (rad/s)',
-    sliderB: 'Damping Ratio ζ (Light → Heavy)',
-  },
-  'phys-3': {
-    title: 'P2.3 Gravitational Equipotential & Orbit',
-    sliderA: 'Orbital Radius r / R_planet',
-    sliderB: 'Central Mass M (×10²⁴ kg)',
-  },
-  'chem-1': {
-    title: 'C3.1 Le Chatelier Dynamic Equilibrium Shift',
-    sliderA: 'System Pressure Perturbation P',
-    sliderB: 'Forward Rate Constant k_f',
-  },
-  'chem-2': {
-    title: 'C3.2 Maxwell-Boltzmann & Catalyst Barrier',
-    sliderA: 'Temperature T (Kelvin)',
-    sliderB: 'Catalyst Activation Threshold E_a',
-  },
-};
-
-const DEFAULT_CORNELL_CUES =
-  '• Core Governing Law?\n• Boundary Condition?\n• Examiner Trap?';
-const DEFAULT_CORNELL_NOTES =
-  '1. Always state standard syllabus equation before substituting values.\n2. Verify dimensional consistency and SI prefixes.\n3. Connect graphical slope to physical rate of change.';
-const DEFAULT_CORNELL_SUMMARY =
-  'One-sentence synthesis linking the mathematical derivative/integral to the real physical system.';
-
 function StemSimulationSandbox({
-  currentSubject,
-  activeTopicId,
-  simMeta,
+  modelId,
+  meta,
 }: {
-  currentSubject: string;
-  activeTopicId: string;
-  simMeta: { title: string; sliderA: string; sliderB: string };
+  modelId: Exclude<LabModelId, ''>;
+  meta: { title: string; sliderA: string; sliderB: string };
 }) {
-  // Interactive STEM Simulation Brass/Wood Sliders State
   const [paramA, setParamA] = useState(45);
   const [paramB, setParamB] = useState(60);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Topic-Aware High-DPI HTML5 Canvas STEM Simulation Renderer
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -142,7 +86,6 @@ function StemSimulationSandbox({
     const h = logicalH;
     ctx.clearRect(0, 0, w, h);
 
-    // Subtle dark slate grid background
     ctx.fillStyle = '#14241E';
     ctx.fillRect(0, 0, w, h);
 
@@ -161,7 +104,6 @@ function StemSimulationSandbox({
       ctx.stroke();
     }
 
-    // Axes
     ctx.strokeStyle = 'rgba(241, 245, 249, 0.35)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
@@ -171,8 +113,7 @@ function StemSimulationSandbox({
     ctx.lineTo(32, 16);
     ctx.stroke();
 
-    if (activeTopicId === 'math-2') {
-      // Cubic Stationary Points & Inflection Saddle: y = k*(x^3 - 3x)
+    if (modelId === 'math-cubic') {
       const scaleK = 0.5 + (paramB / 100) * 1.1;
       const probeX = -1.6 + (paramA / 100) * 3.2;
       const centerX = w / 2 + 10;
@@ -192,7 +133,6 @@ function StemSimulationSandbox({
       }
       ctx.stroke();
 
-      // Tangent at probeX
       const pxProbe = centerX + probeX * 55;
       const pyProbe = cubicY(probeX);
       const deriv = scaleK * (3 * probeX * probeX - 3);
@@ -218,8 +158,7 @@ function StemSimulationSandbox({
         38,
         25
       );
-    } else if (activeTopicId === 'math-3') {
-      // Integration by Parts Riemann Accumulation: ∫ x * e^(0.4x) dx
+    } else if (modelId === 'math-riemann') {
       const upperX = 80 + (paramA / 100) * 240;
       const numRects = Math.max(4, Math.round(4 + (paramB / 100) * 20));
       const f = (px: number) => {
@@ -255,12 +194,10 @@ function StemSimulationSandbox({
         38,
         25
       );
-    } else if (activeTopicId === 'math-4') {
-      // Separable ODE Slope Field & Exponential Solution Curve: dy/dt = -k*y
+    } else if (modelId === 'math-ode') {
       const kRate = 0.4 + (paramA / 100) * 1.8;
       const y0Amp = 30 + (paramB / 100) * 95;
 
-      // Draw slope field segments
       ctx.strokeStyle = 'rgba(148, 163, 184, 0.35)';
       ctx.lineWidth = 1;
       for (let gx = 48; gx < w - 20; gx += 26) {
@@ -293,8 +230,7 @@ function StemSimulationSandbox({
         38,
         25
       );
-    } else if (activeTopicId === 'phys-2') {
-      // Simple Harmonic Motion Damped Cosine Wave: x(t) = A e^(-ζωt) cos(ωt)
+    } else if (modelId === 'phys-shm') {
       const omega = 1.8 + (paramA / 100) * 4.5;
       const damping = (paramB / 100) * 0.45;
       const midY = (h - 26 + 24) / 2;
@@ -326,14 +262,12 @@ function StemSimulationSandbox({
         38,
         25
       );
-    } else if (activeTopicId === 'phys-3') {
-      // Gravitational Equipotential Circles & Satellite Orbit
+    } else if (modelId === 'phys-orbit') {
       const cx = w / 2 + 10;
       const cy = h / 2 + 4;
       const orbitR = 24 + (paramA / 100) * 48;
       const massFactor = 0.6 + (paramB / 100) * 1.4;
 
-      // Equipotential rings
       ctx.strokeStyle = 'rgba(56, 189, 248, 0.25)';
       ctx.lineWidth = 1;
       [22, 36, 52, 68].forEach((r) => {
@@ -342,13 +276,11 @@ function StemSimulationSandbox({
         ctx.stroke();
       });
 
-      // Central Planet
       ctx.fillStyle = '#10B981';
       ctx.beginPath();
       ctx.arc(cx, cy, 10 * Math.sqrt(massFactor), 0, Math.PI * 2);
       ctx.fill();
 
-      // Active Satellite Equipotential Orbit
       ctx.strokeStyle = '#FDE047';
       ctx.lineWidth = 2.2;
       ctx.beginPath();
@@ -368,12 +300,10 @@ function StemSimulationSandbox({
         38,
         25
       );
-    } else if (activeTopicId === 'chem-1') {
-      // Le Chatelier Dynamic Equilibrium Relaxation Curves ([Reactants] vs [Products])
+    } else if (modelId === 'chem-lechatelier') {
       const pressureShift = (paramA - 50) / 100;
       const rateK = 0.8 + (paramB / 100) * 2.0;
 
-      // Products curve rising to equilibrium plateau
       ctx.strokeStyle = '#10B981';
       ctx.lineWidth = 2.5;
       ctx.beginPath();
@@ -387,7 +317,6 @@ function StemSimulationSandbox({
       }
       ctx.stroke();
 
-      // Reactants curve decaying to equilibrium plateau
       ctx.strokeStyle = '#F59E0B';
       ctx.lineWidth = 2.5;
       ctx.beginPath();
@@ -408,8 +337,7 @@ function StemSimulationSandbox({
         38,
         25
       );
-    } else if (currentSubject === 'Mathematics') {
-      // Default Math (math-1): Secant-to-Tangent First Principles
+    } else if (modelId === 'math-secant') {
       const stepH = Math.max(8, (paramA / 100) * 120);
       const x0 = 55 + (paramB / 100) * 110;
 
@@ -459,8 +387,7 @@ function StemSimulationSandbox({
         42,
         26
       );
-    } else if (currentSubject === 'Physics') {
-      // Default Physics (phys-1): Parabolic Projectile Trajectory
+    } else if (modelId === 'phys-projectile') {
       const angleDeg = 15 + (paramA / 100) * 65;
       const angleRad = (angleDeg * Math.PI) / 180;
       const v0 = 35 + (paramB / 100) * 45;
@@ -507,7 +434,6 @@ function StemSimulationSandbox({
         26
       );
     } else {
-      // Chemistry (chem-2): Maxwell-Boltzmann Distribution
       const tempFactor = 0.65 + (paramA / 100) * 0.9;
       const eaX = 135 + (paramB / 100) * 130;
 
@@ -559,22 +485,10 @@ function StemSimulationSandbox({
     }
 
     ctx.restore();
-  }, [currentSubject, activeTopicId, paramA, paramB]);
+  }, [modelId, paramA, paramB]);
 
   return (
-    <div className="rounded-xl bg-[#FDFBF7] border-2 border-[#1E293B] p-4 school-stamp-card space-y-4">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <Sliders className="w-4 h-4 text-[#B45309] shrink-0" />
-          <h3 className="text-sm font-bold font-serif text-[#1E293B] truncate">
-            {simMeta.title}
-          </h3>
-        </div>
-        <span className="text-xs font-mono px-2.5 py-0.5 rounded bg-[#1A2E26] text-[#10B981] font-bold shrink-0">
-          Interactive Canvas
-        </span>
-      </div>
-
+    <div className="space-y-4">
       <canvas
         ref={canvasRef}
         width={360}
@@ -586,7 +500,7 @@ function StemSimulationSandbox({
       <div className="space-y-3 pt-1">
         <div>
           <div className="flex items-center justify-between text-xs font-mono font-bold text-[#5D4037] mb-1">
-            <span>{simMeta.sliderA}</span>
+            <span>{meta.sliderA}</span>
             <span>{paramA}%</span>
           </div>
           <input
@@ -602,7 +516,7 @@ function StemSimulationSandbox({
 
         <div>
           <div className="flex items-center justify-between text-xs font-mono font-bold text-[#5D4037] mb-1">
-            <span>{simMeta.sliderB}</span>
+            <span>{meta.sliderB}</span>
             <span>{paramB}%</span>
           </div>
           <input
@@ -623,16 +537,21 @@ function StemSimulationSandbox({
 export function StickyNoteDesk() {
   const {
     currentSubject,
+    roadmapState,
     activeTopicId,
     studioTab,
     stickyNotes,
     cornellNotes,
     setStudioTab,
+    setTopicLabModel,
     addStickyNote,
     updateStickyMastery,
+    deleteStickyNote,
     saveCornellForTopic,
-    awardXP,
   } = useStudyDeskStore();
+
+  const activeNode =
+    roadmapState.find((n) => n.id === activeTopicId) || null;
 
   const [flippedIds, setFlippedIds] = useState<Record<string, boolean>>({});
   const [showAddForm, setShowAddForm] = useState(false);
@@ -641,30 +560,28 @@ export function StickyNoteDesk() {
   const [newColor, setNewColor] =
     useState<StoredStickyNote['color']>('yellow');
 
-  // Cornell Notes State (per-topic unsaved drafts fall back cleanly to persisted notes)
+  // Empty-first Cornell drafts per topic (no pre-seeded notes)
   const [cornellDrafts, setCornellDrafts] = useState<
     Record<string, { cues: string; notes: string; summary: string }>
   >({});
   const [savedCornellBadge, setSavedCornellBadge] = useState(false);
 
-  const storedCornell = cornellNotes[activeTopicId];
-  const activeDraft = cornellDrafts[activeTopicId];
-  const cuesText =
-    activeDraft?.cues ?? storedCornell?.cues ?? DEFAULT_CORNELL_CUES;
-  const notesText =
-    activeDraft?.notes ?? storedCornell?.notes ?? DEFAULT_CORNELL_NOTES;
-  const summaryText =
-    activeDraft?.summary ?? storedCornell?.summary ?? DEFAULT_CORNELL_SUMMARY;
+  const storedCornell = activeTopicId ? cornellNotes[activeTopicId] : undefined;
+  const activeDraft = activeTopicId ? cornellDrafts[activeTopicId] : undefined;
+  const cuesText = activeDraft?.cues ?? storedCornell?.cues ?? '';
+  const notesText = activeDraft?.notes ?? storedCornell?.notes ?? '';
+  const summaryText = activeDraft?.summary ?? storedCornell?.summary ?? '';
 
   const updateCornellDraft = (
     field: 'cues' | 'notes' | 'summary',
     value: string
   ) => {
+    if (!activeTopicId) return;
     setCornellDrafts((prev) => {
       const current = prev[activeTopicId] ?? {
-        cues: storedCornell?.cues ?? DEFAULT_CORNELL_CUES,
-        notes: storedCornell?.notes ?? DEFAULT_CORNELL_NOTES,
-        summary: storedCornell?.summary ?? DEFAULT_CORNELL_SUMMARY,
+        cues: storedCornell?.cues ?? '',
+        notes: storedCornell?.notes ?? '',
+        summary: storedCornell?.summary ?? '',
       };
       return {
         ...prev,
@@ -676,9 +593,9 @@ export function StickyNoteDesk() {
     });
   };
 
-  const subjectStickies = stickyNotes.filter(
-    (s) => s.subject === currentSubject
-  );
+  const subjectStickies = currentSubject
+    ? stickyNotes.filter((s) => s.subject === currentSubject)
+    : [];
 
   const toggleFlip = (id: string) => {
     setFlippedIds((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -687,7 +604,7 @@ export function StickyNoteDesk() {
 
   const handleCreateSticky = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newFront.trim() || !newBack.trim()) return;
+    if (!newFront.trim() || !newBack.trim() || !currentSubject) return;
     const rotations = ['rotate-2', '-rotate-1', 'rotate-1', '-rotate-2'];
     const rotationClass =
       rotations[stickyNotes.length % rotations.length];
@@ -712,6 +629,12 @@ export function StickyNoteDesk() {
   };
 
   const handleSaveCornell = async () => {
+    if (
+      !activeTopicId ||
+      (!cuesText.trim() && !notesText.trim() && !summaryText.trim())
+    ) {
+      return;
+    }
     saveCornellForTopic(activeTopicId, cuesText, notesText, summaryText);
     setCornellDrafts((prev) => {
       if (!(activeTopicId in prev)) return prev;
@@ -728,7 +651,6 @@ export function StickyNoteDesk() {
       summary: summaryText,
       updatedAt: Date.now(),
     });
-    awardXP(20);
     chiptuneAudio.playPaperFlip();
     setSavedCornellBadge(true);
     setTimeout(() => setSavedCornellBadge(false), 2500);
@@ -740,11 +662,8 @@ export function StickyNoteDesk() {
     setStudioTab(tab);
   };
 
-  const simMeta = TOPIC_SIM_LABELS[activeTopicId] || {
-    title: 'Interactive Simulation Studio',
-    sliderA: 'Primary Parameter A',
-    sliderB: 'Secondary Parameter B',
-  };
+  const selectedLabId = ((activeNode?.labModel as LabModelId) || '') as LabModelId;
+  const selectedLabMeta = LAB_MODEL_OPTIONS.find((m) => m.id === selectedLabId);
 
   const STUDIO_TABS: Array<{
     id: StudioTab;
@@ -770,6 +689,10 @@ export function StickyNoteDesk() {
     },
   ];
 
+  const hasCornellContent = Boolean(
+    cuesText.trim() || notesText.trim() || summaryText.trim()
+  );
+
   return (
     <aside
       aria-label="Right Panel: 3D Tactile Sticky Notes & Simulation Studio"
@@ -780,14 +703,14 @@ export function StickyNoteDesk() {
         <div className="flex items-center justify-between gap-2 border-b-2 border-[#D4B996] pb-3">
           <div>
             <span className="text-xs font-mono uppercase tracking-wide text-[#5D4037] font-bold block">
-              {currentSubject} Study Tools
+              {currentSubject ? `${currentSubject} Tools` : 'Study Tools'}
             </span>
             <h2 className="text-lg font-bold font-serif text-[#1E293B]">
               Practice &amp; Lab Studio
             </h2>
           </div>
 
-          {studioTab === 'stickies' && (
+          {studioTab === 'stickies' && currentSubject && (
             <button
               id="add-3d-sticky-btn"
               type="button"
@@ -857,15 +780,16 @@ export function StickyNoteDesk() {
 
         {/* Animated Persona Menu Stage for Studio Views */}
         <PersonaMenuStage stageKey={studioTab}>
-          {/* TAB 1: 3D Tactile Sticky Notes with 180deg Flip & SM-2 Interval */}
+          {/* TAB 1: 3D Tactile Sticky Notes */}
           {studioTab === 'stickies' && (
             <div className="space-y-3">
-              {showAddForm && (
+              {showAddForm && currentSubject && (
                 <form
                   onSubmit={handleCreateSticky}
                   className="p-3.5 rounded-xl bg-[#FDFBF7] border-2 border-[#1E293B] space-y-2.5 shadow-[4px_4px_0px_#1E293B]"
                 >
                   <input
+                    id="new-sticky-front-input"
                     type="text"
                     required
                     placeholder="Front Prompt (Active Recall Question)..."
@@ -874,6 +798,7 @@ export function StickyNoteDesk() {
                     className="w-full px-3 py-2 rounded-lg border border-[#C8AE8D] text-xs bg-white focus:outline-none focus:border-[#1A2E26]"
                   />
                   <textarea
+                    id="new-sticky-back-input"
                     rows={2}
                     required
                     placeholder="Back Side Answer / Formula intuition..."
@@ -902,6 +827,7 @@ export function StickyNoteDesk() {
                       )}
                     </div>
                     <button
+                      id="submit-new-sticky-btn"
                       type="submit"
                       className="px-3.5 py-1.5 rounded-lg bg-[#10B981] hover:bg-[#059669] text-white text-xs font-bold cursor-pointer"
                     >
@@ -911,137 +837,227 @@ export function StickyNoteDesk() {
                 </form>
               )}
 
-              <p className="text-xs text-slate-700 font-medium px-0.5">
-                Click any sticky note to flip 180° and grade your active recall.
-              </p>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
-                {subjectStickies.map((note) => {
-                  const isFlipped = !!flippedIds[note.id];
-                  const palette = STICKY_COLORS[note.color];
-
-                  return (
-                    <div
-                      key={note.id}
-                      id={`sticky-note-card-${note.id}`}
-                      onClick={() => toggleFlip(note.id)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          toggleFlip(note.id);
-                        }
+              {subjectStickies.length === 0 ? (
+                <div className="rounded-xl bg-[#FDFBF7] border-2 border-dashed border-[#C8AE8D] p-5 text-center space-y-2.5">
+                  <p className="text-sm font-serif font-bold text-[#1E293B]">
+                    {currentSubject
+                      ? `No flashcards pinned to ${currentSubject} yet`
+                      : 'No flashcards yet'}
+                  </p>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    {currentSubject
+                      ? 'Pin your own 3D active-recall sticky notes to practice SM-2 spaced repetition.'
+                      : 'Create a subject notebook first, then pin 3D sticky notes for quick recall review.'}
+                  </p>
+                  {currentSubject && !showAddForm && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAddForm(true);
+                        chiptuneAudio.playPaperFlip();
                       }}
-                      className={`perspective-1200 h-48 cursor-pointer select-none transition-transform duration-300 hover:scale-[1.03] hover:-translate-y-1 ${note.rotationClass}`}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#FDE047] hover:bg-yellow-300 border-2 border-[#1E293B] text-xs font-bold text-[#1E293B] shadow-[2px_2px_0px_#1E293B] cursor-pointer"
                     >
-                      <div
-                        className={`relative w-full h-full duration-500 preserve-3d transition-transform ${
-                          isFlipped ? 'rotate-y-180' : ''
-                        }`}
-                      >
-                        {/* FRONT SIDE */}
+                      <Plus className="w-3.5 h-3.5" />
+                      Pin First Sticky Note
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs text-slate-700 font-medium px-0.5">
+                    Click any sticky note to flip 180° and grade your active
+                    recall.
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
+                    {subjectStickies.map((note) => {
+                      const isFlipped = !!flippedIds[note.id];
+                      const palette = STICKY_COLORS[note.color];
+
+                      return (
                         <div
-                          className={`absolute inset-0 backface-hidden sticky-paper-curl rounded-xl border-2 ${palette.border} ${palette.frontBg} p-3.5 shadow-[0_10px_24px_-6px_rgba(0,0,0,0.14)] flex flex-col justify-between`}
+                          key={note.id}
+                          id={`sticky-note-card-${note.id}`}
+                          onClick={() => toggleFlip(note.id)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              toggleFlip(note.id);
+                            }
+                          }}
+                          className={`perspective-1200 h-48 cursor-pointer select-none transition-transform duration-300 hover:scale-[1.03] hover:-translate-y-1 ${note.rotationClass}`}
                         >
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-mono font-bold uppercase text-slate-800 flex items-center gap-1.5">
-                              <span
-                                className={`w-2.5 h-2.5 rounded-full ${palette.pinColor} inline-block`}
-                              />
-                              {note.masteryStatus.replace('_', ' ')}
-                            </span>
-                            <span className="text-xs font-mono text-slate-700 flex items-center gap-1">
-                              <RotateCw className="w-3 h-3" />
-                              Flip
-                            </span>
-                          </div>
-
-                          <p className="text-sm font-bold text-[#1E293B] leading-snug line-clamp-3">
-                            {note.frontPrompt}
-                          </p>
-
-                          <div className="text-xs font-mono text-slate-700 flex items-center justify-between pt-1.5 border-t border-black/10">
-                            <span>
-                              SM-2: {note.intervalDays || 1}d • EF{' '}
-                              {(note.easeFactor || 2.5).toFixed(1)}
-                            </span>
-                            <Sparkles className="w-3.5 h-3.5 text-amber-800" />
-                          </div>
-                        </div>
-
-                        {/* REVERSE SIDE */}
-                        <div
-                          className={`absolute inset-0 backface-hidden rotate-y-180 rounded-xl border-2 ${palette.border} ${palette.backBg} p-3.5 shadow-[0_10px_24px_-6px_rgba(0,0,0,0.16)] flex flex-col justify-between`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-mono font-bold uppercase text-[#1E293B]">
-                              Answer
-                            </span>
-                            <RotateCw className="w-3.5 h-3.5 text-slate-700" />
-                          </div>
-
-                          <p className="text-xs font-medium text-[#1E293B] leading-relaxed overflow-y-auto pr-1">
-                            {note.backAnswer}
-                          </p>
-
-                          {/* Tag Mastery Buttons */}
                           <div
-                            className="flex items-center gap-1.5 pt-1.5 border-t border-black/10"
-                            onClick={(e) => e.stopPropagation()}
+                            className={`relative w-full h-full duration-500 preserve-3d transition-transform ${
+                              isFlipped ? 'rotate-y-180' : ''
+                            }`}
                           >
-                            <button
-                              type="button"
-                              onClick={() =>
-                                updateStickyMastery(note.id, 'MASTERED')
-                              }
-                              title="Mark Mastered (Increases SM-2 Interval)"
-                              className="flex-1 py-1 rounded-md bg-[#10B981] text-white text-xs font-bold flex items-center justify-center gap-1 cursor-pointer"
+                            {/* FRONT SIDE */}
+                            <div
+                              className={`absolute inset-0 backface-hidden sticky-paper-curl rounded-xl border-2 ${palette.border} ${palette.frontBg} p-3.5 shadow-[0_10px_24px_-6px_rgba(0,0,0,0.14)] flex flex-col justify-between`}
                             >
-                              <CheckCircle2 className="w-3 h-3" />
-                              Got It
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                updateStickyMastery(note.id, 'SPACED_DUE')
-                              }
-                              title="Schedule Spaced Review (2d)"
-                              className="flex-1 py-1 rounded-md bg-[#F59E0B] text-white text-xs font-bold flex items-center justify-center gap-1 cursor-pointer"
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-mono font-bold uppercase text-slate-800 flex items-center gap-1.5">
+                                  <span
+                                    className={`w-2.5 h-2.5 rounded-full ${palette.pinColor} inline-block`}
+                                  />
+                                  {note.masteryStatus.replace('_', ' ')}
+                                </span>
+                                <span className="text-xs font-mono text-slate-700 flex items-center gap-1">
+                                  <RotateCw className="w-3 h-3" />
+                                  Flip
+                                </span>
+                              </div>
+
+                              <p className="text-sm font-bold text-[#1E293B] leading-snug line-clamp-3">
+                                {note.frontPrompt}
+                              </p>
+
+                              <div className="text-xs font-mono text-slate-700 flex items-center justify-between pt-1.5 border-t border-black/10">
+                                <span>
+                                  SM-2: {note.intervalDays || 1}d • EF{' '}
+                                  {(note.easeFactor || 2.5).toFixed(1)}
+                                </span>
+                                <Sparkles className="w-3.5 h-3.5 text-amber-800" />
+                              </div>
+                            </div>
+
+                            {/* REVERSE SIDE */}
+                            <div
+                              className={`absolute inset-0 backface-hidden rotate-y-180 rounded-xl border-2 ${palette.border} ${palette.backBg} p-3.5 shadow-[0_10px_24px_-6px_rgba(0,0,0,0.16)] flex flex-col justify-between`}
                             >
-                              <Clock className="w-3 h-3" />
-                              Review
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                updateStickyMastery(note.id, 'WEAK_POINT')
-                              }
-                              title="Flag Weak Point (1d Reset)"
-                              className="flex-1 py-1 rounded-md bg-[#EF4444] text-white text-xs font-bold flex items-center justify-center gap-1 cursor-pointer"
-                            >
-                              <AlertTriangle className="w-3 h-3" />
-                              Retry
-                            </button>
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-mono font-bold uppercase text-[#1E293B]">
+                                  Answer
+                                </span>
+                                <button
+                                  type="button"
+                                  aria-label="Delete sticky note"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteStickyNote(note.id);
+                                    chiptuneAudio.playPaperFlip();
+                                  }}
+                                  className="p-1 rounded text-slate-700 hover:text-[#B91C1C] cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+
+                              <p className="text-xs font-medium text-[#1E293B] leading-relaxed overflow-y-auto pr-1">
+                                {note.backAnswer}
+                              </p>
+
+                              {/* Tag Mastery Buttons */}
+                              <div
+                                className="flex items-center gap-1.5 pt-1.5 border-t border-black/10"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateStickyMastery(note.id, 'MASTERED')
+                                  }
+                                  title="Mark Mastered (Increases SM-2 Interval)"
+                                  className="flex-1 py-1 rounded-md bg-[#10B981] text-white text-xs font-bold flex items-center justify-center gap-1 cursor-pointer"
+                                >
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  Got It
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateStickyMastery(note.id, 'SPACED_DUE')
+                                  }
+                                  title="Schedule Spaced Review (2d)"
+                                  className="flex-1 py-1 rounded-md bg-[#F59E0B] text-white text-xs font-bold flex items-center justify-center gap-1 cursor-pointer"
+                                >
+                                  <Clock className="w-3 h-3" />
+                                  Review
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateStickyMastery(note.id, 'WEAK_POINT')
+                                  }
+                                  title="Flag Weak Point (1d Reset)"
+                                  className="flex-1 py-1 rounded-md bg-[#EF4444] text-white text-xs font-bold flex items-center justify-center gap-1 cursor-pointer"
+                                >
+                                  <AlertTriangle className="w-3 h-3" />
+                                  Retry
+                                </button>
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </div>
           )}
 
-          {/* TAB 2: Interactive STEM Simulation Sandbox */}
+          {/* TAB 2: Interactive STEM Simulation Sandbox (Explicitly Selected Per Topic) */}
           {studioTab === 'simulation' && (
-            <StemSimulationSandbox
-              currentSubject={currentSubject}
-              activeTopicId={activeTopicId}
-              simMeta={simMeta}
-            />
+            <div className="rounded-xl bg-[#FDFBF7] border-2 border-[#1E293B] p-4 school-stamp-card space-y-4">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Sliders className="w-4 h-4 text-[#B45309] shrink-0" />
+                  <h3 className="text-sm font-bold font-serif text-[#1E293B] truncate">
+                    {selectedLabMeta
+                      ? selectedLabMeta.title
+                      : 'Interactive STEM Lab Bench'}
+                  </h3>
+                </div>
+                <select
+                  id="lab-model-selector"
+                  aria-label="Choose interactive STEM simulation"
+                  disabled={!activeNode}
+                  value={selectedLabId}
+                  onChange={(e) => {
+                    if (!activeNode) return;
+                    setTopicLabModel(
+                      activeNode.id,
+                      e.target.value as LabModelId
+                    );
+                    chiptuneAudio.playPaperFlip();
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-[#F5EBE0] border border-[#1E293B] text-xs font-mono font-bold text-[#1E293B] cursor-pointer disabled:opacity-50"
+                >
+                  <option value="">None (Blank Bench)</option>
+                  {LAB_MODEL_OPTIONS.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.category}: {opt.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedLabId && selectedLabMeta ? (
+                <StemSimulationSandbox
+                  modelId={selectedLabId}
+                  meta={selectedLabMeta}
+                />
+              ) : (
+                <div className="h-52 rounded-xl border-2 border-dashed border-[#3E2723]/50 bg-[#14241E] text-[#F1F5F9] p-5 flex flex-col items-center justify-center text-center gap-2">
+                  <Sliders className="w-6 h-6 text-[#FDE047]" />
+                  <p className="text-xs sm:text-sm font-bold">
+                    Lab Bench Ready &amp; Unassigned
+                  </p>
+                  <p className="text-xs text-slate-300 max-w-xs">
+                    {activeNode
+                      ? 'Pick a Maths, Physics, or Chemistry simulation model from the selector above when needed.'
+                      : 'Open a notebook and topic first to attach a STEM visualizer.'}
+                  </p>
+                </div>
+              )}
+            </div>
           )}
 
-          {/* TAB 3: Cornell Notes Folio */}
+          {/* TAB 3: Cornell Notes Folio (Clean Empty Fields) */}
           {studioTab === 'cornell' && (
             <div className="rounded-xl bg-[#FDFBF7] border-2 border-[#1E293B] p-4 school-stamp-card space-y-3.5">
               <div className="flex items-center justify-between border-b border-[#E6D5B8] pb-2.5">
@@ -1054,65 +1070,82 @@ export function StickyNoteDesk() {
                 <button
                   id="save-cornell-notes-btn"
                   type="button"
+                  disabled={!activeTopicId || !hasCornellContent}
                   onClick={handleSaveCornell}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#10B981] hover:bg-[#059669] text-white text-xs font-bold transition-colors cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#10B981] hover:bg-[#059669] disabled:opacity-50 text-white text-xs font-bold transition-colors cursor-pointer"
                 >
                   <Save className="w-3.5 h-3.5" />
-                  {savedCornellBadge ? 'Saved!' : 'Save Folio (+20 XP)'}
+                  {savedCornellBadge ? 'Saved!' : 'Save Folio'}
                 </button>
               </div>
 
-              <div className="grid grid-cols-12 gap-3">
-                <div className="col-span-5">
-                  <label
-                    htmlFor="cornell-cues-input"
-                    className="text-xs font-mono uppercase text-slate-600 font-bold block mb-1.5"
-                  >
-                    Recall Cues
-                  </label>
-                  <textarea
-                    id="cornell-cues-input"
-                    rows={7}
-                    value={cuesText}
-                    onChange={(e) => updateCornellDraft('cues', e.target.value)}
-                    className="w-full p-2.5 rounded-lg bg-[#F5EBE0]/75 border border-[#C8AE8D] text-xs text-[#1E293B] leading-relaxed focus:outline-none focus:border-[#1A2E26]"
-                  />
-                </div>
+              {!activeNode ? (
+                <p className="text-xs text-slate-600 py-8 text-center">
+                  Create or select a topic in your notebook to record Cornell
+                  notes.
+                </p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-12 gap-3">
+                    <div className="col-span-5">
+                      <label
+                        htmlFor="cornell-cues-input"
+                        className="text-xs font-mono uppercase text-slate-600 font-bold block mb-1.5"
+                      >
+                        Recall Cues
+                      </label>
+                      <textarea
+                        id="cornell-cues-input"
+                        rows={7}
+                        placeholder="Key questions, keywords, or exam traps..."
+                        value={cuesText}
+                        onChange={(e) =>
+                          updateCornellDraft('cues', e.target.value)
+                        }
+                        className="w-full p-2.5 rounded-lg bg-[#F5EBE0]/75 border border-[#C8AE8D] text-xs text-[#1E293B] placeholder:text-slate-400 leading-relaxed focus:outline-none focus:border-[#1A2E26]"
+                      />
+                    </div>
 
-                <div className="col-span-7">
-                  <label
-                    htmlFor="cornell-notes-input"
-                    className="text-xs font-mono uppercase text-slate-600 font-bold block mb-1.5"
-                  >
-                    Derivation &amp; Key Steps
-                  </label>
-                  <textarea
-                    id="cornell-notes-input"
-                    rows={7}
-                    value={notesText}
-                    onChange={(e) => updateCornellDraft('notes', e.target.value)}
-                    className="w-full p-2.5 rounded-lg bg-white border border-[#C8AE8D] text-xs text-[#1E293B] leading-relaxed focus:outline-none focus:border-[#1A2E26]"
-                  />
-                </div>
-              </div>
+                    <div className="col-span-7">
+                      <label
+                        htmlFor="cornell-notes-input"
+                        className="text-xs font-mono uppercase text-slate-600 font-bold block mb-1.5"
+                      >
+                        Notes &amp; Key Steps
+                      </label>
+                      <textarea
+                        id="cornell-notes-input"
+                        rows={7}
+                        placeholder="Write your main derivations, mechanisms, or structured notes..."
+                        value={notesText}
+                        onChange={(e) =>
+                          updateCornellDraft('notes', e.target.value)
+                        }
+                        className="w-full p-2.5 rounded-lg bg-white border border-[#C8AE8D] text-xs text-[#1E293B] placeholder:text-slate-400 leading-relaxed focus:outline-none focus:border-[#1A2E26]"
+                      />
+                    </div>
+                  </div>
 
-              <div>
-                <label
-                  htmlFor="cornell-summary-input"
-                  className="text-xs font-mono uppercase text-slate-600 font-bold block mb-1.5"
-                >
-                  Synthesis Summary
-                </label>
-                <input
-                  id="cornell-summary-input"
-                  type="text"
-                  value={summaryText}
-                  onChange={(e) =>
-                    updateCornellDraft('summary', e.target.value)
-                  }
-                  className="w-full px-3 py-2 rounded-lg bg-[#F8F4EC] border border-[#C8AE8D] text-xs text-[#1E293B] font-medium focus:outline-none focus:border-[#1A2E26]"
-                />
-              </div>
+                  <div>
+                    <label
+                      htmlFor="cornell-summary-input"
+                      className="text-xs font-mono uppercase text-slate-600 font-bold block mb-1.5"
+                    >
+                      Synthesis Summary
+                    </label>
+                    <input
+                      id="cornell-summary-input"
+                      type="text"
+                      placeholder="Summarize the takeaway concept in one crisp sentence..."
+                      value={summaryText}
+                      onChange={(e) =>
+                        updateCornellDraft('summary', e.target.value)
+                      }
+                      className="w-full px-3 py-2 rounded-lg bg-[#F8F4EC] border border-[#C8AE8D] text-xs text-[#1E293B] placeholder:text-slate-400 font-medium focus:outline-none focus:border-[#1A2E26]"
+                    />
+                  </div>
+                </>
+              )}
             </div>
           )}
         </PersonaMenuStage>
@@ -1121,7 +1154,9 @@ export function StickyNoteDesk() {
       {/* Subtle Bottom Studio Reminder Footer */}
       <div className="pt-3 border-t border-[#D4B996] flex items-center justify-between text-xs font-mono text-[#5D4037]">
         <span>Local-First Saved</span>
-        <span>Topic: {activeTopicId.toUpperCase()}</span>
+        <span>
+          {activeNode ? `Topic: ${activeNode.code}` : 'No Topic Active'}
+        </span>
       </div>
     </aside>
   );

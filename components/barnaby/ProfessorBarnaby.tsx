@@ -24,7 +24,7 @@ interface ProfessorBarnabyProps {
   speechText: string;
   socraticQuestion: string;
   bloomsLevel?: BloomsLevel;
-  keyUsed?: 'KEY_1' | 'KEY_2' | 'KEY_3';
+  keyUsed?: 'KEY_1' | 'KEY_2' | 'KEY_3' | null;
   isStreamingTrigger?: number;
 }
 
@@ -39,10 +39,11 @@ export function ProfessorBarnaby({
   speechText,
   socraticQuestion,
   bloomsLevel = 'Analyze',
-  keyUsed = 'KEY_1',
+  keyUsed = null,
   isStreamingTrigger = 0,
 }: ProfessorBarnabyProps) {
-  const { currentSubject, activeCallState, audioMuted } = useStudyDeskStore();
+  const { currentSubject, activeCallState, audioMuted, geminiHasKey } =
+    useStudyDeskStore();
   const [manualCostume, setManualCostume] = useState<BarnabyCostume | null>(
     null
   );
@@ -64,6 +65,8 @@ export function ProfessorBarnaby({
   const isSpeaking =
     streamState.forKey === streamKey ? streamState.speaking : false;
 
+  const isScienceSubject = /chem|phys|bio|lab|sci/i.test(currentSubject);
+
   // Derive active costume from context unless manually overridden
   const derivedCostume: BarnabyCostume = manualCostume
     ? manualCostume
@@ -71,9 +74,9 @@ export function ProfessorBarnaby({
       ? 'focus-sprint'
       : activeCallState === 'REVISION_TEST'
         ? 'revision-test'
-        : currentSubject === 'Mathematics'
-          ? 'maths'
-          : 'lab-science';
+        : isScienceSubject
+          ? 'lab-science'
+          : 'maths';
 
   // Stream text with synchronized 8-bit chiptune Web Audio oscillator syllables
   useEffect(() => {
@@ -134,16 +137,40 @@ export function ProfessorBarnaby({
             <Sparkles className="w-3.5 h-3.5 text-[#FDE047]" />
             Professor Barnaby
           </span>
-          <span className="text-xs font-mono px-2.5 py-1 rounded-lg bg-[#10B981]/15 text-[#065F46] border border-[#10B981]/30 font-semibold">
-            Bloom&apos;s: {bloomsLevel}
-          </span>
-          <span
-            className="text-xs font-mono px-2 py-1 rounded-lg bg-[#FDFBF7] text-slate-700 border border-[#D4B996] flex items-center gap-1"
-            title="Active Gemini 2.0 Flash Key Rotator Slot"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-[#10B981]" />
-            {keyUsed}
-          </span>
+          {speechText && (
+            <span className="text-xs font-mono px-2.5 py-1 rounded-lg bg-[#10B981]/15 text-[#065F46] border border-[#10B981]/30 font-semibold">
+              Bloom&apos;s: {bloomsLevel}
+            </span>
+          )}
+          {keyUsed ? (
+            <span
+              className="text-xs font-mono px-2 py-1 rounded-lg bg-[#FDFBF7] text-slate-700 border border-[#D4B996] flex items-center gap-1"
+              title="Gemini 2.0 Flash Key Rotator Slot Used"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-[#10B981]" />
+              {keyUsed}
+            </span>
+          ) : (
+            <span
+              className={`text-xs font-mono px-2 py-1 rounded-lg border flex items-center gap-1 ${
+                geminiHasKey
+                  ? 'bg-[#FDFBF7] text-[#065F46] border-[#10B981]/40'
+                  : 'bg-[#F59E0B]/15 text-[#92400E] border-[#F59E0B]/40'
+              }`}
+              title="Gemini API Status"
+            >
+              <ShieldCheck
+                className={`w-3.5 h-3.5 ${
+                  geminiHasKey ? 'text-[#10B981]' : 'text-[#F59E0B]'
+                }`}
+              />
+              {geminiHasKey === null
+                ? 'Checking Keys...'
+                : geminiHasKey
+                  ? 'Gemini Ready'
+                  : 'API Key Needed'}
+            </span>
+          )}
         </div>
 
         {/* Compact Outfit Selector Toggle */}
@@ -631,40 +658,53 @@ export function ProfessorBarnaby({
                   />
                   {isSpeaking
                     ? 'Chiptune Voice Streaming...'
-                    : 'Socratic Scroll'}
+                    : speechText
+                      ? 'Socratic Scroll'
+                      : 'Desk Standby'}
                 </span>
-                <button
-                  id="barnaby-replay-voice-btn"
-                  type="button"
-                  onClick={replaySpeech}
-                  className="text-xs font-mono text-slate-700 hover:text-[#1A2E26] flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#E6D5B8]/60 hover:bg-[#E6D5B8] transition-colors cursor-pointer"
-                  title="Replay Scroll & 8-Bit Chiptune Audio"
-                >
-                  <RotateCw className="w-3 h-3" />
-                  Replay
-                </button>
+                {speechText && (
+                  <button
+                    id="barnaby-replay-voice-btn"
+                    type="button"
+                    onClick={replaySpeech}
+                    className="text-xs font-mono text-slate-700 hover:text-[#1A2E26] flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#E6D5B8]/60 hover:bg-[#E6D5B8] transition-colors cursor-pointer"
+                    title="Replay Scroll & 8-Bit Chiptune Audio"
+                  >
+                    <RotateCw className="w-3 h-3" />
+                    Replay
+                  </button>
+                )}
               </div>
 
               {/* Clean, natural human English prose (NEVER literal beep-boop text) */}
-              <p
-                aria-live="polite"
-                className="text-sm leading-relaxed text-[#1E293B] font-normal"
-              >
-                {displayedText}
-                {isSpeaking && (
-                  <span className="inline-block w-1.5 h-4 ml-0.5 bg-[#10B981] animate-pulse align-middle" />
-                )}
-              </p>
+              {speechText ? (
+                <p
+                  aria-live="polite"
+                  className="text-sm leading-relaxed text-[#1E293B] font-normal"
+                >
+                  {displayedText}
+                  {isSpeaking && (
+                    <span className="inline-block w-1.5 h-4 ml-0.5 bg-[#10B981] animate-pulse align-middle" />
+                  )}
+                </p>
+              ) : (
+                <p className="text-xs sm:text-sm leading-relaxed text-slate-600">
+                  Desk is clean and ready. Open a notebook topic and ask a
+                  question below once your Gemini API key is connected.
+                </p>
+              )}
 
               {/* Socratic Guiding Question Highlight */}
-              <div className="mt-3 pt-2.5 border-t border-[#E5D5BC] flex items-start gap-2">
-                <span className="px-2 py-0.5 rounded bg-[#1A2E26] text-[#FDE047] text-xs font-mono font-bold uppercase shrink-0 mt-0.5">
-                  Prompt
-                </span>
-                <p className="text-xs sm:text-sm font-semibold text-[#1A2E26] italic leading-snug">
-                  &ldquo;{socraticQuestion}&rdquo;
-                </p>
-              </div>
+              {socraticQuestion && (
+                <div className="mt-3 pt-2.5 border-t border-[#E5D5BC] flex items-start gap-2">
+                  <span className="px-2 py-0.5 rounded bg-[#1A2E26] text-[#FDE047] text-xs font-mono font-bold uppercase shrink-0 mt-0.5">
+                    Prompt
+                  </span>
+                  <p className="text-xs sm:text-sm font-semibold text-[#1A2E26] italic leading-snug">
+                    &ldquo;{socraticQuestion}&rdquo;
+                  </p>
+                </div>
+              )}
             </motion.div>
           </AnimatePresence>
         </div>

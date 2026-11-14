@@ -7,7 +7,6 @@ import {
   Play,
   Pause,
   RotateCcw,
-  Users,
   Volume2,
   VolumeX,
   Download,
@@ -22,20 +21,28 @@ import {
   HardDrive,
   CheckCircle2,
   X,
+  Plus,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   useStudyDeskStore,
-  type SubjectName,
   type SyllabusBoard,
   type CameraPanTarget,
 } from '@/lib/store';
 import { chiptuneAudio } from '@/lib/audio';
 import { geminiRotator, type KeySlotStatus } from '@/lib/gemini';
-import { storageAdapter, type StorageProviderType } from '@/lib/storage';
+import { storageAdapter } from '@/lib/storage';
 import { PersonaMenuStage } from '@/components/transitions/PersonaSchoolTransition';
 
-const SUBJECTS: SubjectName[] = ['Mathematics', 'Physics', 'Chemistry'];
-const BOARDS: SyllabusBoard[] = ['AQA', 'Edexcel', 'OCR', 'IB'];
+const BOARDS: SyllabusBoard[] = [
+  'General',
+  'AQA',
+  'Edexcel',
+  'OCR',
+  'IB',
+  'AP',
+];
 
 const STATIONS: Array<{
   id: CameraPanTarget;
@@ -48,79 +55,75 @@ const STATIONS: Array<{
   { id: 'right', label: '3D Studio', icon: FlaskConical },
 ];
 
-const SQUAD_MEMBERS = [
-  {
-    name: 'Maya L.',
-    subject: 'Mathematics',
-    status: 'Deriving M1.2',
-    initials: 'ML',
-    bg: 'bg-[#10B981]',
-  },
-  {
-    name: 'Liam K.',
-    subject: 'Physics',
-    status: 'Simulating P2.1',
-    initials: 'LK',
-    bg: 'bg-[#F59E0B]',
-  },
-  {
-    name: 'Zara T.',
-    subject: 'Chemistry',
-    status: 'Feynman Mode',
-    initials: 'ZT',
-    bg: 'bg-[#3B82F6]',
-  },
-];
-
 export function DeskHeader() {
   const {
+    subjects,
     currentSubject,
     syllabusBoard,
+    activeTopicId,
     userXP,
     streakCount,
+    lastStudyDate,
     activeCallState,
     cameraPan,
     audioMuted,
+    geminiHasKey,
     stickyNotes,
     backpackFiles,
     cornellNotes,
     roadmapState,
+    workbookDialogues,
+    quizCompletedIds,
+    selectedAnswers,
+    createNotebook,
     setSubject,
     setSyllabusBoard,
     setActiveCallState,
+    setGeminiHasKey,
     panToLeft,
     panToCenter,
     panToRight,
     panToOverview,
     setAudioMuted,
+    resetAllData,
     hydrateFromArchive,
   } = useStudyDeskStore();
 
   const [secondsLeft, setSecondsLeft] = useState(25 * 60);
   const [pomodoroRunning, setPomodoroRunning] = useState(false);
+
+  // Locker modal state
   const [showVaultModal, setShowVaultModal] = useState(false);
-  const [vaultTab, setVaultTab] = useState<'keys' | 'archive' | 'squad'>(
-    'keys'
-  );
+  const [vaultTab, setVaultTab] = useState<'keys' | 'archive'>('keys');
   const [keySlots, setKeySlots] = useState<KeySlotStatus[]>(
     geminiRotator.getTelemetry().slots
   );
   const [customKeyInputs, setCustomKeyInputs] = useState<
     [string, string, string]
   >(['', '', '']);
-  const [activeStorageProvider, setActiveStorageProvider] =
-    useState<StorageProviderType>(storageAdapter.getProvider());
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
+
+  // New notebook creator modal state
+  const [showCreateNotebook, setShowCreateNotebook] = useState(false);
+  const [newSubjectName, setNewSubjectName] = useState('');
+  const [newSubjectBoard, setNewSubjectBoard] =
+    useState<SyllabusBoard>('General');
+
   const [archiveToast, setArchiveToast] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!showVaultModal) return;
+    if (!showVaultModal && !showCreateNotebook) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setShowVaultModal(false);
+      if (e.key === 'Escape') {
+        setShowVaultModal(false);
+        setShowCreateNotebook(false);
+        setConfirmResetOpen(false);
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [showVaultModal]);
+  }, [showVaultModal, showCreateNotebook]);
 
   useEffect(() => {
     if (!pomodoroRunning) return;
@@ -137,6 +140,11 @@ export function DeskHeader() {
     }, 1000);
     return () => clearInterval(timer);
   }, [pomodoroRunning, setActiveCallState]);
+
+  const showToast = (msg: string, ms = 3500) => {
+    setArchiveToast(msg);
+    setTimeout(() => setArchiveToast(null), ms);
+  };
 
   const togglePomodoro = () => {
     const next = !pomodoroRunning;
@@ -174,10 +182,31 @@ export function DeskHeader() {
     else panToRight();
   };
 
-  const handleSubjectSelect = (subj: SubjectName) => {
+  const handleSubjectSelect = (subj: string) => {
     if (subj === currentSubject) return;
     chiptuneAudio.playSchoolBellChime();
     setSubject(subj);
+  };
+
+  const handleOpenLocker = async () => {
+    setShowVaultModal(true);
+    setConfirmResetOpen(false);
+    chiptuneAudio.playMenuSlash();
+    const status = await geminiRotator.fetchServerKeyStatus();
+    setKeySlots(status.slots);
+    setGeminiHasKey(status.anyConfigured);
+    const savedCustom = geminiRotator.getCustomKeys();
+    setCustomKeyInputs(savedCustom);
+  };
+
+  const handleCreateNotebookSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSubjectName.trim()) return;
+    chiptuneAudio.playSchoolBellChime();
+    createNotebook(newSubjectName, newSubjectBoard);
+    setNewSubjectName('');
+    setNewSubjectBoard('General');
+    setShowCreateNotebook(false);
   };
 
   const handleExportDesk = async () => {
@@ -186,20 +215,25 @@ export function DeskHeader() {
       topicBadges[n.id] = n.status;
     });
     await storageAdapter.exportDeskArchive({
-      formatVersion: '1.0.0-desk',
+      formatVersion: '2.0.0-desk',
       exportedAt: new Date().toISOString(),
-      studentCallsign: 'Scholar-01',
       userXP,
       streakCount,
+      lastStudyDate,
       currentSubject,
       syllabusBoard,
+      activeTopicId,
+      subjects,
+      roadmapState,
+      workbookDialogues,
+      quizCompletedIds,
+      selectedAnswers,
       topicBadges,
       stickyNotes,
       backpackFiles,
       cornellNotes: Object.values(cornellNotes),
     });
-    setArchiveToast('Saved .desk archive to your computer!');
-    setTimeout(() => setArchiveToast(null), 3500);
+    showToast('Exported .desk archive to your computer!');
   };
 
   const handleImportDesk = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -208,39 +242,87 @@ export function DeskHeader() {
     try {
       const archive = await storageAdapter.parseDeskArchive(file);
       hydrateFromArchive({
-        userXP: archive.userXP,
-        streakCount: archive.streakCount,
-        currentSubject:
-          (archive.currentSubject as SubjectName) || 'Mathematics',
-        syllabusBoard: (archive.syllabusBoard as SyllabusBoard) || 'AQA',
+        userXP: archive.userXP || 0,
+        streakCount: archive.streakCount || 0,
+        lastStudyDate: archive.lastStudyDate ?? null,
+        currentSubject: archive.currentSubject || '',
+        syllabusBoard: (archive.syllabusBoard as SyllabusBoard) || 'General',
+        activeTopicId: archive.activeTopicId || '',
+        subjects: archive.subjects || [],
+        roadmapState: archive.roadmapState || [],
+        workbookDialogues: archive.workbookDialogues || {},
+        quizCompletedIds: archive.quizCompletedIds || {},
+        selectedAnswers: archive.selectedAnswers || {},
         topicBadges: archive.topicBadges,
-        stickyNotes: archive.stickyNotes || stickyNotes,
-        backpackFiles: archive.backpackFiles || backpackFiles,
+        stickyNotes: archive.stickyNotes || [],
+        backpackFiles: archive.backpackFiles || [],
         cornellNotes: archive.cornellNotes,
       });
       chiptuneAudio.playMasteryFanfare();
-      setArchiveToast(
-        `Restored .desk snapshot (${archive.stickyNotes.length} flashcards)!`
+      showToast(
+        `Restored .desk backup (${archive.subjects?.length ?? 0} notebooks, ${archive.stickyNotes.length} cards)!`,
+        4000
       );
-      setTimeout(() => setArchiveToast(null), 4000);
     } catch {
-      setArchiveToast('Could not parse .desk archive file.');
-      setTimeout(() => setArchiveToast(null), 4000);
+      showToast('Could not parse .desk archive file.', 4000);
     }
+    e.target.value = '';
   };
 
-  const handleApplyKeys = () => {
+  const handleApplyKeys = async () => {
+    const hasShortNonEmpty = customKeyInputs.some((k) => {
+      const len = k.trim().length;
+      return len > 0 && len < 8;
+    });
+    if (hasShortNonEmpty) {
+      showToast(
+        'One of your API key entries looks too short — paste the full Gemini key.',
+        4000
+      );
+      return;
+    }
     geminiRotator.setCustomKeys(customKeyInputs);
-    setKeySlots(geminiRotator.getTelemetry().slots);
-    setArchiveToast('Updated 3-Key Gemini Flash Rotator pool!');
-    setTimeout(() => setArchiveToast(null), 3000);
+    const status = await geminiRotator.fetchServerKeyStatus();
+    setKeySlots(status.slots);
+    setGeminiHasKey(status.anyConfigured);
+    const hasCustomBrowserKey = customKeyInputs.some((k) => k.trim().length >= 8);
+    showToast(
+      hasCustomBrowserKey
+        ? 'Browser Gemini API key pool saved and active!'
+        : status.anyConfigured
+          ? 'Using configured server environment Gemini API key(s).'
+          : 'No API key configured — paste a Gemini key to activate Barnaby.'
+    );
+  };
+
+  const handleClearKeys = async () => {
+    geminiRotator.clearCustomKeys();
+    setCustomKeyInputs(['', '', '']);
+    const status = await geminiRotator.fetchServerKeyStatus();
+    setKeySlots(status.slots);
+    setGeminiHasKey(status.anyConfigured);
+    showToast('Cleared browser API keys.');
+  };
+
+  const handleConfirmResetDesk = async () => {
+    await storageAdapter.clearAllDeskData();
+    geminiRotator.clearCustomKeys();
+    resetAllData();
+    const status = await geminiRotator.fetchServerKeyStatus();
+    setKeySlots(status.slots);
+    setGeminiHasKey(status.anyConfigured);
+    setCustomKeyInputs(['', '', '']);
+    setConfirmResetOpen(false);
+    setShowVaultModal(false);
+    chiptuneAudio.playMenuSlash();
+    showToast('All local desk data reset cleanly.');
   };
 
   return (
     <header className="w-full border-b-2 border-[#C8AE8D] bg-[#F3E6D3]/95 backdrop-blur-md px-3 sm:px-5 py-2.5 shadow-sm z-30 sticky top-0">
       <div className="max-w-[1760px] mx-auto flex flex-wrap items-center justify-between gap-3">
-        {/* LEFT: School Brand Crest & Subject Period Switcher */}
-        <div className="flex items-center gap-3 flex-wrap">
+        {/* LEFT: School Brand Crest & Dynamic User Notebooks */}
+        <div className="flex items-center gap-2.5 flex-wrap">
           <div className="chalkboard-surface border-2 border-[#4E342E] rounded-xl px-3.5 py-1.5 flex items-center gap-2.5 text-[#FDFBF7] shadow-[2px_2px_0px_#3E2723]">
             <BookOpen className="w-4 h-4 text-[#FDE047] shrink-0" />
             <div>
@@ -248,63 +330,85 @@ export function DeskHeader() {
                 Barnaby&apos;s Study Desk
               </h1>
               <p className="text-xs text-emerald-200/90 font-mono leading-tight hidden sm:block">
-                {syllabusBoard} Classroom • Period: {currentSubject}
+                {currentSubject
+                  ? `${syllabusBoard} • ${currentSubject}`
+                  : 'Empty Workspace'}
               </p>
             </div>
           </div>
 
-          {/* Subject Period Tabs with Skewed Persona Highlighter */}
-          <div
-            className="flex items-center bg-[#E6D5B8] p-1 rounded-xl border border-[#C8AE8D]"
-            role="group"
-            aria-label="Subject Period Selector"
-          >
-            {SUBJECTS.map((subj) => {
-              const active = currentSubject === subj;
-              return (
-                <button
-                  key={subj}
-                  id={`subject-tab-${subj.toLowerCase()}`}
-                  onClick={() => handleSubjectSelect(subj)}
-                  className={`relative px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                    active
-                      ? 'text-[#1E293B]'
-                      : 'text-[#1E293B]/75 hover:text-[#1E293B]'
-                  }`}
-                >
-                  {active && (
-                    <motion.span
-                      layoutId="subject-highlighter"
-                      transition={{
-                        type: 'spring',
-                        stiffness: 420,
-                        damping: 30,
-                      }}
-                      className="absolute inset-0 bg-[#FDE047] border border-[#1E293B] rounded-lg -skew-x-6 shadow-[2px_2px_0px_#1E293B]"
-                    />
-                  )}
-                  <span className="relative z-10">{subj}</span>
-                </button>
-              );
-            })}
-          </div>
+          {/* Dynamic User Subject Notebooks */}
+          {subjects.length > 0 && (
+            <div
+              className="flex items-center flex-wrap gap-1 bg-[#E6D5B8] p-1 rounded-xl border border-[#C8AE8D]"
+              role="group"
+              aria-label="Your Subject Notebooks"
+            >
+              {subjects.map((subj) => {
+                const active = currentSubject === subj.name;
+                return (
+                  <button
+                    key={subj.id}
+                    id={`subject-tab-${subj.id}`}
+                    type="button"
+                    onClick={() => handleSubjectSelect(subj.name)}
+                    className={`relative px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                      active
+                        ? 'text-[#1E293B]'
+                        : 'text-[#1E293B]/75 hover:text-[#1E293B]'
+                    }`}
+                  >
+                    {active && (
+                      <motion.span
+                        layoutId="subject-highlighter"
+                        transition={{
+                          type: 'spring',
+                          stiffness: 420,
+                          damping: 30,
+                        }}
+                        className="absolute inset-0 bg-[#FDE047] border border-[#1E293B] rounded-lg -skew-x-6 shadow-[2px_2px_0px_#1E293B]"
+                      />
+                    )}
+                    <span className="relative z-10">{subj.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
-          <select
-            id="syllabus-board-select"
-            aria-label="Exam Syllabus Board"
-            value={syllabusBoard}
-            onChange={(e) => {
-              setSyllabusBoard(e.target.value as SyllabusBoard);
+          {/* Create Notebook Trigger */}
+          <button
+            id="header-new-notebook-btn"
+            type="button"
+            onClick={() => {
+              setShowCreateNotebook(true);
               chiptuneAudio.playPaperFlip();
             }}
-            className="bg-[#FDFBF7] border border-[#B89972] rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-[#1E293B] cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#1A2E26]"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#FDFBF7] hover:bg-[#FDE047] border border-[#B89972] hover:border-[#1E293B] text-xs font-bold text-[#1E293B] transition-colors cursor-pointer"
           >
-            {BOARDS.map((b) => (
-              <option key={b} value={b}>
-                {b}
-              </option>
-            ))}
-          </select>
+            <Plus className="w-3.5 h-3.5" />
+            <span>New Notebook</span>
+          </button>
+
+          {/* Active Notebook Curriculum Selector */}
+          {currentSubject && (
+            <select
+              id="syllabus-board-select"
+              aria-label="Exam Syllabus Board"
+              value={syllabusBoard}
+              onChange={(e) => {
+                setSyllabusBoard(e.target.value as SyllabusBoard);
+                chiptuneAudio.playPaperFlip();
+              }}
+              className="bg-[#FDFBF7] border border-[#B89972] rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-[#1E293B] cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#1A2E26]"
+            >
+              {BOARDS.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         {/* CENTER: Classroom Station Switcher (Clear 1-Click Menu Navigation) */}
@@ -350,7 +454,7 @@ export function DeskHeader() {
           })}
         </nav>
 
-        {/* RIGHT: Analog Pomodoro Clock, Streak/XP, Audio & Desk Vault */}
+        {/* RIGHT: Analog Pomodoro Clock, Streak/XP, Audio & Desk Locker */}
         <div className="flex items-center gap-2">
           {/* Compact Brass Analog Pomodoro Clock */}
           <div className="flex items-center gap-2 bg-[#FDFBF7] border border-[#B89972] rounded-xl px-2.5 py-1 shadow-xs">
@@ -392,7 +496,13 @@ export function DeskHeader() {
             </span>
             <button
               id="pomodoro-toggle-btn"
+              type="button"
               onClick={togglePomodoro}
+              aria-label={
+                pomodoroRunning
+                  ? 'Pause Focus Sprint'
+                  : 'Start 25-minute Focus Sprint'
+              }
               title={
                 pomodoroRunning
                   ? 'Pause Focus Sprint'
@@ -413,7 +523,9 @@ export function DeskHeader() {
             {(pomodoroRunning || secondsLeft < 1500) && (
               <button
                 id="pomodoro-reset-btn"
+                type="button"
                 onClick={resetPomodoro}
+                aria-label="Reset Pomodoro Clock"
                 title="Reset Clock"
                 className="p-1 rounded-lg bg-[#F5EBE0] hover:bg-[#E6D5B8] text-slate-700 cursor-pointer"
               >
@@ -444,7 +556,9 @@ export function DeskHeader() {
           {/* Audio Toggle */}
           <button
             id="toggle-chiptune-audio-btn"
+            type="button"
             onClick={toggleMute}
+            aria-label={audioMuted ? 'Unmute Desk Sound' : 'Mute Desk Sound'}
             title={audioMuted ? 'Unmute Desk Sound' : 'Mute Desk Sound'}
             className={`p-2 rounded-xl border transition-colors cursor-pointer ${
               audioMuted
@@ -459,21 +573,23 @@ export function DeskHeader() {
             )}
           </button>
 
-          {/* Classroom Vault, Keys & Study Squad Button */}
+          {/* Classroom Locker: API Keys, Backups & Reset */}
           <button
             id="open-desk-vault-btn"
             type="button"
-            title="Desk Locker: Keys, Saves & Squad"
+            title="Desk Locker: Gemini API Keys, Backups & Reset"
             aria-label="Open Desk Locker"
-            onClick={() => {
-              setKeySlots(geminiRotator.getTelemetry().slots);
-              setShowVaultModal(true);
-              chiptuneAudio.playMenuSlash();
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#1A2E26] hover:bg-[#243F35] text-[#FDFBF7] text-xs font-bold border border-[#1E293B] shadow-[2px_2px_0px_#FDE047] transition-all cursor-pointer"
+            onClick={handleOpenLocker}
+            className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#1A2E26] hover:bg-[#243F35] text-[#FDFBF7] text-xs font-bold border border-[#1E293B] shadow-[2px_2px_0px_#FDE047] transition-all cursor-pointer"
           >
-            <KeyRound className="w-3.5 h-3.5 text-[#FDE047]" />
-            <span className="hidden lg:inline">Desk Locker</span>
+            <KeyRound
+              className={`w-3.5 h-3.5 ${
+                geminiHasKey === false ? 'text-[#F59E0B]' : 'text-[#FDE047]'
+              }`}
+            />
+            <span className="hidden lg:inline">
+              {geminiHasKey === false ? 'Setup Keys' : 'Desk Locker'}
+            </span>
           </button>
         </div>
       </div>
@@ -493,7 +609,105 @@ export function DeskHeader() {
         )}
       </AnimatePresence>
 
-      {/* Classroom Locker Modal (3-Key Pool, .desk Backups, & Study Squad) */}
+      {/* New Notebook Modal */}
+      <AnimatePresence>
+        {showCreateNotebook && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/55 backdrop-blur-xs flex items-center justify-center p-4"
+            onClick={() => setShowCreateNotebook(false)}
+          >
+            <motion.form
+              onSubmit={handleCreateNotebookSubmit}
+              initial={{ opacity: 0, scale: 0.94, skewX: -2.5, y: 14 }}
+              animate={{ opacity: 1, scale: 1, skewX: 0, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 10 }}
+              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              onClick={(e) => e.stopPropagation()}
+              className="workbook-paper-surface border-2 border-[#1E293B] rounded-2xl max-w-md w-full p-5 shadow-[8px_8px_0px_#1E293B] text-[#1E293B] space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-[#D4B996] pb-3">
+                <h2 className="text-lg font-bold font-serif">
+                  Create New Subject Notebook
+                </h2>
+                <button
+                  type="button"
+                  aria-label="Close modal"
+                  onClick={() => setShowCreateNotebook(false)}
+                  className="p-1.5 rounded-lg bg-[#E6D5B8] hover:bg-[#D4B996] cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label
+                    htmlFor="new-notebook-name"
+                    className="text-xs font-mono font-bold uppercase text-slate-700 block mb-1"
+                  >
+                    Notebook / Subject Name
+                  </label>
+                  <input
+                    id="new-notebook-name"
+                    type="text"
+                    required
+                    autoFocus
+                    placeholder="e.g. Organic Chemistry, Calculus, Macroeconomics..."
+                    value={newSubjectName}
+                    onChange={(e) => setNewSubjectName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white border-2 border-[#C8AE8D] text-xs sm:text-sm focus:outline-none focus:border-[#1A2E26]"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="new-notebook-board"
+                    className="text-xs font-mono font-bold uppercase text-slate-700 block mb-1"
+                  >
+                    Syllabus / Standard
+                  </label>
+                  <select
+                    id="new-notebook-board"
+                    value={newSubjectBoard}
+                    onChange={(e) =>
+                      setNewSubjectBoard(e.target.value as SyllabusBoard)
+                    }
+                    className="w-full px-3 py-2 rounded-xl bg-white border-2 border-[#C8AE8D] text-xs sm:text-sm font-medium focus:outline-none focus:border-[#1A2E26]"
+                  >
+                    {BOARDS.map((b) => (
+                      <option key={b} value={b}>
+                        {b}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateNotebook(false)}
+                  className="px-3.5 py-2 rounded-xl bg-[#E6D5B8] hover:bg-[#D4B996] text-xs font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  id="confirm-create-notebook-btn"
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-[#1A2E26] hover:bg-[#243F35] text-[#FDFBF7] text-xs font-bold border border-[#1E293B] shadow-[2px_2px_0px_#FDE047] cursor-pointer"
+                >
+                  Create Blank Notebook
+                </button>
+              </div>
+            </motion.form>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Classroom Locker Modal (Gemini 3-Key Pool & .desk Backups / Reset) */}
       <AnimatePresence>
         {showVaultModal && (
           <motion.div
@@ -515,14 +729,16 @@ export function DeskHeader() {
                 <div>
                   <h2 className="text-lg font-bold font-serif flex items-center gap-2">
                     <KeyRound className="w-5 h-5 text-[#1A2E26]" />
-                    Classroom Locker: Keys, Saves &amp; Squad
+                    Classroom Locker: API Keys, Saves &amp; Reset
                   </h2>
                   <p className="text-xs text-slate-600 mt-0.5">
-                    Keep your physical study desk clutter-free by storing setup tools inside your locker.
+                    Configure real Gemini 2.0 Flash keys, export local backups,
+                    or wipe all desk data cleanly.
                   </p>
                 </div>
                 <button
                   id="close-desk-vault-btn"
+                  type="button"
                   onClick={() => setShowVaultModal(false)}
                   aria-label="Close Classroom Locker"
                   className="p-1.5 rounded-lg bg-[#E6D5B8] hover:bg-[#D4B996] text-[#1E293B] cursor-pointer"
@@ -536,14 +752,14 @@ export function DeskHeader() {
                 {(
                   [
                     { id: 'keys', label: 'Gemini 3-Key Rotator' },
-                    { id: 'archive', label: '.desk Save & Storage' },
-                    { id: 'squad', label: 'Study Squad (3 Peers)' },
+                    { id: 'archive', label: 'Backups & Reset' },
                   ] as const
                 ).map((t) => {
                   const active = vaultTab === t.id;
                   return (
                     <button
                       key={t.id}
+                      type="button"
                       onClick={() => {
                         if (vaultTab === t.id) return;
                         setVaultTab(t.id);
@@ -574,14 +790,14 @@ export function DeskHeader() {
 
               <PersonaMenuStage stageKey={vaultTab}>
                 {vaultTab === 'keys' && (
-                  <div className="space-y-3">
+                  <div className="space-y-3.5">
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                       {keySlots.map((slot, idx) => (
                         <div
                           key={slot.id}
                           className="p-3 rounded-xl bg-[#F5EBE0] border border-[#D4B996] space-y-1.5"
                         >
-                          <div className="flex items-center justify-between">
+                          <div className="flex items-center justify-between gap-1">
                             <span className="font-mono text-xs font-bold text-[#1A2E26]">
                               {slot.id}
                             </span>
@@ -592,7 +808,11 @@ export function DeskHeader() {
                                   : 'bg-[#F59E0B]/20 text-[#92400E]'
                               }`}
                             >
-                              {slot.configured ? 'LIVE' : 'FALLBACK'}
+                              {slot.source === 'server-env'
+                                ? 'SERVER ENV'
+                                : slot.source === 'browser-key'
+                                  ? 'ACTIVE'
+                                  : 'NOT SET'}
                             </span>
                           </div>
                           <div className="text-xs flex items-center justify-between text-slate-700 pt-1">
@@ -603,7 +823,7 @@ export function DeskHeader() {
                           </div>
                           <input
                             type="password"
-                            placeholder={`Override ${slot.id}`}
+                            placeholder={`Paste ${slot.id}`}
                             value={customKeyInputs[idx]}
                             onChange={(e) => {
                               const next: [string, string, string] = [
@@ -617,58 +837,54 @@ export function DeskHeader() {
                         </div>
                       ))}
                     </div>
-                    <button
-                      id="apply-custom-gemini-keys-btn"
-                      onClick={handleApplyKeys}
-                      className="px-4 py-2 rounded-xl bg-[#1A2E26] text-white text-xs font-bold hover:bg-[#243F35] cursor-pointer"
-                    >
-                      Save Keys to Server/Client Rotator
-                    </button>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                      <button
+                        id="apply-custom-gemini-keys-btn"
+                        type="button"
+                        onClick={handleApplyKeys}
+                        className="px-4 py-2 rounded-xl bg-[#1A2E26] text-white text-xs font-bold hover:bg-[#243F35] cursor-pointer"
+                      >
+                        Save Keys to Browser &amp; Activate
+                      </button>
+
+                      {customKeyInputs.some((k) => k.trim().length > 0) && (
+                        <button
+                          type="button"
+                          onClick={handleClearKeys}
+                          className="px-3.5 py-2 rounded-xl bg-[#F5EBE0] hover:bg-[#E6D5B8] border border-[#C8AE8D] text-xs font-bold text-slate-700 cursor-pointer"
+                        >
+                          Clear Saved Browser Keys
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
 
                 {vaultTab === 'archive' && (
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {(
-                        [
-                          { id: 'local-dexie', label: 'Dexie + WebOPFS' },
-                          { id: 'google-drive', label: 'Google Drive' },
-                          { id: 'onedrive', label: 'OneDrive' },
-                          { id: 'dropbox', label: 'Dropbox' },
-                        ] as const
-                      ).map((prov) => {
-                        const active = activeStorageProvider === prov.id;
-                        return (
-                          <button
-                            key={prov.id}
-                            onClick={() => {
-                              storageAdapter.toggleCloudConnection(prov.id);
-                              setActiveStorageProvider(
-                                storageAdapter.getProvider()
-                              );
-                            }}
-                            className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-                              active
-                                ? 'bg-[#1A2E26] text-white border-[#1A2E26]'
-                                : 'bg-white border-slate-300 text-slate-700 hover:bg-[#F5EBE0]'
-                            }`}
-                          >
-                            <div className="text-xs font-bold flex items-center gap-1">
-                              <HardDrive className="w-3.5 h-3.5" />
-                              {prov.label}
-                            </div>
-                            <div className="text-xs opacity-80 mt-0.5">
-                              {active ? 'Active' : 'Mount'}
-                            </div>
-                          </button>
-                        );
-                      })}
+                  <div className="space-y-4">
+                    <div className="p-3.5 rounded-xl bg-[#1A2E26] text-[#FDFBF7] flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <HardDrive className="w-4 h-4 text-[#10B981] shrink-0" />
+                        <div>
+                          <div className="text-xs font-bold">
+                            Local IndexedDB + WebOPFS
+                          </div>
+                          <div className="text-xs text-slate-300">
+                            All notebooks, flashcards, files, and Cornell notes
+                            stay private on your device.
+                          </div>
+                        </div>
+                      </div>
+                      <span className="px-2 py-0.5 rounded bg-[#10B981]/25 text-[#10B981] font-mono text-xs font-bold shrink-0">
+                        ACTIVE
+                      </span>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-3 pt-2">
+                    <div className="flex flex-wrap items-center gap-3">
                       <button
                         id="export-desk-archive-btn"
+                        type="button"
                         onClick={handleExportDesk}
                         className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#10B981] hover:bg-[#059669] text-white text-xs font-bold cursor-pointer"
                       >
@@ -677,6 +893,7 @@ export function DeskHeader() {
                       </button>
                       <button
                         id="import-desk-archive-btn"
+                        type="button"
                         onClick={() => fileInputRef.current?.click()}
                         className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#F5EBE0] hover:bg-[#E6D5B8] text-[#1E293B] border border-[#C8AE8D] text-xs font-bold cursor-pointer"
                       >
@@ -691,36 +908,48 @@ export function DeskHeader() {
                         className="hidden"
                       />
                     </div>
-                  </div>
-                )}
 
-                {vaultTab === 'squad' && (
-                  <div className="space-y-2.5">
-                    <p className="text-xs text-slate-600 flex items-center gap-1.5">
-                      <Users className="w-4 h-4 text-[#10B981]" />
-                      Study Squad classmates currently active in today&apos;s period:
-                    </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                      {SQUAD_MEMBERS.map((member) => (
-                        <div
-                          key={member.name}
-                          className="p-3 rounded-xl bg-[#F5EBE0] border border-[#D4B996] flex items-center gap-2.5"
+                    {/* Clear All Desk Data / Reset */}
+                    <div className="pt-3 border-t border-[#D4B996] space-y-2.5">
+                      {!confirmResetOpen ? (
+                        <button
+                          id="open-reset-desk-confirm-btn"
+                          type="button"
+                          onClick={() => setConfirmResetOpen(true)}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#EF4444]/10 hover:bg-[#EF4444]/20 border border-[#EF4444]/50 text-[#991B1B] text-xs font-bold cursor-pointer"
                         >
-                          <div
-                            className={`w-9 h-9 rounded-full ${member.bg} text-white text-xs font-bold flex items-center justify-center shrink-0`}
-                          >
-                            {member.initials}
+                          <Trash2 className="w-4 h-4" />
+                          Clear All Desk Data / Reset
+                        </button>
+                      ) : (
+                        <div className="p-3.5 rounded-xl bg-[#EF4444]/10 border-2 border-[#EF4444] space-y-2.5">
+                          <div className="flex items-start gap-2 text-xs text-[#7F1D1D] font-semibold">
+                            <AlertTriangle className="w-4 h-4 text-[#EF4444] shrink-0 mt-0.5" />
+                            <span>
+                              This removes every notebook, topic, sticky note,
+                              uploaded file, Cornell sheet, XP, and browser
+                              Gemini key on this device.
+                            </span>
                           </div>
-                          <div>
-                            <div className="text-xs font-bold text-[#1E293B]">
-                              {member.name}
-                            </div>
-                            <div className="text-xs text-slate-600">
-                              {member.status}
-                            </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              id="confirm-reset-desk-btn"
+                              type="button"
+                              onClick={handleConfirmResetDesk}
+                              className="px-3.5 py-1.5 rounded-lg bg-[#EF4444] hover:bg-[#DC2626] text-white text-xs font-bold cursor-pointer"
+                            >
+                              Confirm Wipe Everything
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmResetOpen(false)}
+                              className="px-3.5 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-bold cursor-pointer"
+                            >
+                              Cancel
+                            </button>
                           </div>
                         </div>
-                      ))}
+                      )}
                     </div>
                   </div>
                 )}

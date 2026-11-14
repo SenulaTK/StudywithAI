@@ -1,10 +1,6 @@
 import Dexie, { type Table } from 'dexie';
 
-export type StorageProviderType =
-  | 'local-dexie'
-  | 'google-drive'
-  | 'onedrive'
-  | 'dropbox';
+export type StorageProviderType = 'local-dexie';
 
 export interface StoredStickyNote {
   id: string;
@@ -41,27 +37,103 @@ export interface StoredCornellNote {
   updatedAt: number;
 }
 
+export interface StoredNotebookSubject {
+  id: string;
+  name: string;
+  syllabusBoard: string;
+  createdAt: number;
+}
+
+export interface StoredDiagnosticQuestion {
+  id: string;
+  bloomsLevel:
+    | 'Remember'
+    | 'Understand'
+    | 'Apply'
+    | 'Analyze'
+    | 'Evaluate'
+    | 'Create';
+  question: string;
+  formulaLatex?: string;
+  options: string[];
+  correctIndex: number;
+  socraticExplanation: string;
+  xpReward: number;
+}
+
+export interface StoredRoadmapTopicNode {
+  id: string;
+  code: string;
+  title: string;
+  subtitle: string;
+  subject: string;
+  status: 'LOCKED' | 'UNLOCKED' | 'BRONZE' | 'SILVER' | 'GOLD' | 'DIAMOND';
+  spacedDue?: boolean;
+  weakPoint?: boolean;
+  coreLatex: string;
+  coreLatexCaption: string;
+  initialBarnabyGreeting: string;
+  initialSocraticQuestion: string;
+  initialHints: string[];
+  diagnosticQuestions: StoredDiagnosticQuestion[];
+  labModel?: string;
+}
+
+export interface StoredDialogueTurn {
+  id: string;
+  role: 'barnaby' | 'student';
+  text: string;
+  socraticFollowUp?: string;
+  bloomsLevel?:
+    | 'Remember'
+    | 'Understand'
+    | 'Apply'
+    | 'Analyze'
+    | 'Evaluate'
+    | 'Create';
+  latexFormula?: string;
+  latexCaption?: string;
+  hintSteps?: string[];
+  keyUsed?: 'KEY_1' | 'KEY_2' | 'KEY_3';
+  timestamp: string;
+}
+
 export interface StoredDeskMeta {
   userXP: number;
   streakCount: number;
+  lastStudyDate?: string | null;
   currentSubject: string;
   syllabusBoard: string;
+  activeTopicId?: string;
+  subjects?: StoredNotebookSubject[];
+  roadmapState?: StoredRoadmapTopicNode[];
+  workbookDialogues?: Record<string, StoredDialogueTurn[]>;
+  quizCompletedIds?: Record<string, boolean>;
+  selectedAnswers?: Record<string, number>;
   topicBadges: Record<string, string>;
 }
 
 export interface DeskSnapshotArchive {
-  formatVersion: '1.0.0-desk';
+  formatVersion: '1.0.0-desk' | '2.0.0-desk';
   exportedAt: string;
-  studentCallsign: string;
   userXP: number;
   streakCount: number;
+  lastStudyDate?: string | null;
   currentSubject: string;
   syllabusBoard: string;
+  activeTopicId?: string;
+  subjects?: StoredNotebookSubject[];
+  roadmapState?: StoredRoadmapTopicNode[];
+  workbookDialogues?: Record<string, StoredDialogueTurn[]>;
+  quizCompletedIds?: Record<string, boolean>;
+  selectedAnswers?: Record<string, number>;
   topicBadges: Record<string, string>;
   stickyNotes: StoredStickyNote[];
   backpackFiles: StoredBackpackFile[];
   cornellNotes: StoredCornellNote[];
 }
+
+export const CUSTOM_GEMINI_KEYS_STORAGE_KEY = 'barnaby_gemini_custom_keys';
 
 class StudyDeskDatabase extends Dexie {
   stickyNotes!: Table<StoredStickyNote, string>;
@@ -85,34 +157,9 @@ export const deskDb =
 
 export class BYOSStorageAdapter {
   private activeProvider: StorageProviderType = 'local-dexie';
-  private cloudConnected: Record<StorageProviderType, boolean> = {
-    'local-dexie': true,
-    'google-drive': false,
-    onedrive: false,
-    dropbox: false,
-  };
 
   public getProvider(): StorageProviderType {
     return this.activeProvider;
-  }
-
-  public setProvider(provider: StorageProviderType) {
-    this.activeProvider = provider;
-  }
-
-  public isProviderConnected(provider: StorageProviderType): boolean {
-    return this.cloudConnected[provider];
-  }
-
-  public toggleCloudConnection(provider: StorageProviderType): boolean {
-    if (provider === 'local-dexie') return true;
-    this.cloudConnected[provider] = !this.cloudConnected[provider];
-    if (this.cloudConnected[provider]) {
-      this.activeProvider = provider;
-    } else if (this.activeProvider === provider) {
-      this.activeProvider = 'local-dexie';
-    }
-    return this.cloudConnected[provider];
   }
 
   /**
@@ -138,10 +185,22 @@ export class BYOSStorageAdapter {
     }
   }
 
+  public async removeFromOPFS(filename: string): Promise<void> {
+    if (typeof window === 'undefined' || !('storage' in navigator)) return;
+    try {
+      const root = await navigator.storage.getDirectory();
+      await root.removeEntry(filename);
+    } catch {
+      // Ignore if file does not exist or OPFS is unavailable
+    }
+  }
+
   public async saveStickyNotes(notes: StoredStickyNote[]): Promise<void> {
     if (!deskDb) return;
     await deskDb.stickyNotes.clear();
-    await deskDb.stickyNotes.bulkPut(notes);
+    if (notes.length > 0) {
+      await deskDb.stickyNotes.bulkPut(notes);
+    }
   }
 
   public async loadStickyNotes(): Promise<StoredStickyNote[]> {
@@ -152,7 +211,9 @@ export class BYOSStorageAdapter {
   public async saveBackpackFiles(files: StoredBackpackFile[]): Promise<void> {
     if (!deskDb) return;
     await deskDb.backpackFiles.clear();
-    await deskDb.backpackFiles.bulkPut(files);
+    if (files.length > 0) {
+      await deskDb.backpackFiles.bulkPut(files);
+    }
   }
 
   public async loadBackpackFiles(): Promise<StoredBackpackFile[]> {
@@ -163,6 +224,14 @@ export class BYOSStorageAdapter {
   public async saveCornellNote(note: StoredCornellNote): Promise<void> {
     if (!deskDb) return;
     await deskDb.cornellNotes.put(note);
+  }
+
+  public async saveCornellNotes(notes: StoredCornellNote[]): Promise<void> {
+    if (!deskDb) return;
+    await deskDb.cornellNotes.clear();
+    if (notes.length > 0) {
+      await deskDb.cornellNotes.bulkPut(notes);
+    }
   }
 
   public async loadCornellNotes(): Promise<StoredCornellNote[]> {
@@ -190,8 +259,30 @@ export class BYOSStorageAdapter {
   }
 
   /**
+   * Wipes all local workspace notebooks, notes, flashcards, files, and metadata cleanly.
+   */
+  public async clearAllDeskData(): Promise<void> {
+    if (deskDb) {
+      await Promise.all([
+        deskDb.stickyNotes.clear(),
+        deskDb.backpackFiles.clear(),
+        deskDb.cornellNotes.clear(),
+        deskDb.kvMeta.clear(),
+      ]);
+    }
+    await this.removeFromOPFS('latest-backup.desk');
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem(CUSTOM_GEMINI_KEYS_STORAGE_KEY);
+      } catch {
+        // Ignore storage restrictions
+      }
+    }
+  }
+
+  /**
    * Exports a zero-cloud `.desk` archive file containing all student mastery state,
-   * sticky notes, RAG backpack chunks, and Cornell notes.
+   * notebooks, topics, dialogues, sticky notes, RAG backpack chunks, and Cornell notes.
    */
   public async exportDeskArchive(
     snapshot: DeskSnapshotArchive
@@ -206,8 +297,12 @@ export class BYOSStorageAdapter {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     const dateStamp = new Date().toISOString().slice(0, 10);
+    const slug = (snapshot.currentSubject || 'workspace')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
     a.href = url;
-    a.download = `barnaby-study-desk-${snapshot.currentSubject.toLowerCase()}-${dateStamp}.desk`;
+    a.download = `barnaby-study-desk-${slug || 'workspace'}-${dateStamp}.desk`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -220,26 +315,43 @@ export class BYOSStorageAdapter {
   public async parseDeskArchive(file: File): Promise<DeskSnapshotArchive> {
     const text = await file.text();
     const parsed = JSON.parse(text) as DeskSnapshotArchive;
-    if (!parsed || parsed.formatVersion !== '1.0.0-desk') {
+    if (
+      !parsed ||
+      (parsed.formatVersion !== '1.0.0-desk' &&
+        parsed.formatVersion !== '2.0.0-desk')
+    ) {
       throw new Error('Invalid .desk archive signature');
     }
     if (deskDb) {
-      if (Array.isArray(parsed.stickyNotes)) {
+      await deskDb.stickyNotes.clear();
+      if (Array.isArray(parsed.stickyNotes) && parsed.stickyNotes.length > 0) {
         await this.saveStickyNotes(parsed.stickyNotes);
       }
-      if (Array.isArray(parsed.backpackFiles)) {
+      await deskDb.backpackFiles.clear();
+      if (
+        Array.isArray(parsed.backpackFiles) &&
+        parsed.backpackFiles.length > 0
+      ) {
         await this.saveBackpackFiles(parsed.backpackFiles);
       }
+      await deskDb.cornellNotes.clear();
       if (Array.isArray(parsed.cornellNotes)) {
         for (const cn of parsed.cornellNotes) {
           await this.saveCornellNote(cn);
         }
       }
       await this.saveDeskMeta({
-        userXP: parsed.userXP,
-        streakCount: parsed.streakCount,
-        currentSubject: parsed.currentSubject,
-        syllabusBoard: parsed.syllabusBoard,
+        userXP: parsed.userXP || 0,
+        streakCount: parsed.streakCount || 0,
+        lastStudyDate: parsed.lastStudyDate ?? null,
+        currentSubject: parsed.currentSubject || '',
+        syllabusBoard: parsed.syllabusBoard || 'General',
+        activeTopicId: parsed.activeTopicId || '',
+        subjects: parsed.subjects || [],
+        roadmapState: parsed.roadmapState || [],
+        workbookDialogues: parsed.workbookDialogues || {},
+        quizCompletedIds: parsed.quizCompletedIds || {},
+        selectedAnswers: parsed.selectedAnswers || {},
         topicBadges: parsed.topicBadges || {},
       });
     }

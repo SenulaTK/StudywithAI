@@ -11,18 +11,15 @@ import {
   PersonaSchoolCurtain,
   PersonaMenuStage,
 } from '@/components/transitions/PersonaSchoolTransition';
-import {
-  useStudyDeskStore,
-  type SubjectName,
-  type SyllabusBoard,
-} from '@/lib/store';
+import { useStudyDeskStore, type SyllabusBoard } from '@/lib/store';
 import { chiptuneAudio } from '@/lib/audio';
 import { storageAdapter } from '@/lib/storage';
+import { geminiRotator } from '@/lib/gemini';
 
 const STATION_NAMES = {
   left: 'Chalkboard Roadmap',
   center: 'Open Workbook & Professor Barnaby',
-  right: 'Practice & STEM Lab Studio',
+  right: 'Practice & Lab Studio',
 } as const;
 
 export default function StudyDeskPage() {
@@ -30,31 +27,42 @@ export default function StudyDeskPage() {
     cameraPan,
     userXP,
     streakCount,
+    lastStudyDate,
+    subjects,
     currentSubject,
     syllabusBoard,
     roadmapState,
+    activeTopicId,
+    workbookDialogues,
+    quizCompletedIds,
+    selectedAnswers,
     stickyNotes,
     backpackFiles,
+    cornellNotes,
     panToOverview,
+    setGeminiHasKey,
     hydrateFromArchive,
   } = useStudyDeskStore();
 
   const [isHydrated, setIsHydrated] = useState(false);
 
-  // Step 1: Hydrate saved state from Local-First Dexie IndexedDB on initial mount
+  // Hydrate workspace from Local-First Dexie IndexedDB & probe Gemini key configuration
   useEffect(() => {
     let mounted = true;
-    async function hydrateFromDexie() {
+    async function hydrateWorkspace() {
       try {
-        const [savedStickies, savedBackpack, savedCornell, savedMeta] =
+        const [savedStickies, savedBackpack, savedCornell, savedMeta, keyStatus] =
           await Promise.all([
             storageAdapter.loadStickyNotes(),
             storageAdapter.loadBackpackFiles(),
             storageAdapter.loadCornellNotes(),
             storageAdapter.loadDeskMeta(),
+            geminiRotator.fetchServerKeyStatus(),
           ]);
 
         if (!mounted) return;
+
+        setGeminiHasKey(keyStatus.anyConfigured);
 
         const hasSavedData =
           savedStickies.length > 0 ||
@@ -63,30 +71,27 @@ export default function StudyDeskPage() {
           savedMeta !== null;
 
         if (hasSavedData) {
-          const stateSnapshot = useStudyDeskStore.getState();
           hydrateFromArchive({
-            userXP: savedMeta?.userXP ?? stateSnapshot.userXP,
-            streakCount: savedMeta?.streakCount ?? stateSnapshot.streakCount,
-            currentSubject:
-              (savedMeta?.currentSubject as SubjectName) ??
-              stateSnapshot.currentSubject,
+            userXP: savedMeta?.userXP ?? 0,
+            streakCount: savedMeta?.streakCount ?? 0,
+            lastStudyDate: savedMeta?.lastStudyDate ?? null,
+            currentSubject: savedMeta?.currentSubject ?? '',
             syllabusBoard:
-              (savedMeta?.syllabusBoard as SyllabusBoard) ??
-              stateSnapshot.syllabusBoard,
+              (savedMeta?.syllabusBoard as SyllabusBoard) ?? 'General',
+            activeTopicId: savedMeta?.activeTopicId ?? '',
+            subjects: savedMeta?.subjects ?? [],
+            roadmapState: savedMeta?.roadmapState ?? [],
+            workbookDialogues: savedMeta?.workbookDialogues ?? {},
+            quizCompletedIds: savedMeta?.quizCompletedIds ?? {},
+            selectedAnswers: savedMeta?.selectedAnswers ?? {},
             topicBadges: savedMeta?.topicBadges,
-            stickyNotes:
-              savedStickies.length > 0
-                ? savedStickies
-                : stateSnapshot.stickyNotes,
-            backpackFiles:
-              savedBackpack.length > 0
-                ? savedBackpack
-                : stateSnapshot.backpackFiles,
+            stickyNotes: savedStickies,
+            backpackFiles: savedBackpack,
             cornellNotes: savedCornell,
           });
         }
       } catch {
-        // Fallback to default in-memory state if IndexedDB is blocked
+        // Fallback to clean empty state if IndexedDB is blocked
       } finally {
         if (mounted) {
           setIsHydrated(true);
@@ -94,13 +99,13 @@ export default function StudyDeskPage() {
       }
     }
 
-    hydrateFromDexie();
+    hydrateWorkspace();
     return () => {
       mounted = false;
     };
-  }, [hydrateFromArchive]);
+  }, [hydrateFromArchive, setGeminiHasKey]);
 
-  // Step 2: Persist updates to Dexie IndexedDB only AFTER initial hydration completes
+  // Persist updates to Dexie IndexedDB after initial hydration
   useEffect(() => {
     if (!isHydrated) return;
     storageAdapter.saveStickyNotes(stickyNotes).catch(() => {});
@@ -113,6 +118,13 @@ export default function StudyDeskPage() {
 
   useEffect(() => {
     if (!isHydrated) return;
+    storageAdapter
+      .saveCornellNotes(Object.values(cornellNotes))
+      .catch(() => {});
+  }, [isHydrated, cornellNotes]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
     const topicBadges: Record<string, string> = {};
     roadmapState.forEach((n) => {
       topicBadges[n.id] = n.status;
@@ -121,12 +133,32 @@ export default function StudyDeskPage() {
       .saveDeskMeta({
         userXP,
         streakCount,
+        lastStudyDate,
         currentSubject,
         syllabusBoard,
+        activeTopicId,
+        subjects,
+        roadmapState,
+        workbookDialogues,
+        quizCompletedIds,
+        selectedAnswers,
         topicBadges,
       })
       .catch(() => {});
-  }, [isHydrated, userXP, streakCount, currentSubject, syllabusBoard, roadmapState]);
+  }, [
+    isHydrated,
+    userXP,
+    streakCount,
+    lastStudyDate,
+    currentSubject,
+    syllabusBoard,
+    activeTopicId,
+    subjects,
+    roadmapState,
+    workbookDialogues,
+    quizCompletedIds,
+    selectedAnswers,
+  ]);
 
   return (
     <MotionConfig reducedMotion="user">
@@ -170,7 +202,7 @@ export default function StudyDeskPage() {
                   <WorkbookCanvas />
                 </motion.div>
 
-                {/* RIGHT PANEL (4 cols): 3D Sticky Note Desk & Simulation Studio */}
+                {/* RIGHT PANEL (4 cols): 3D Sticky Note Desk & Lab Studio */}
                 <motion.div
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}

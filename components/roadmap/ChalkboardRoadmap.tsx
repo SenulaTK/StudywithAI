@@ -14,14 +14,26 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
+  Plus,
+  BookPlus,
 } from 'lucide-react';
 import {
   useStudyDeskStore,
   type BadgeStatus,
   type RoadmapTopicNode,
+  type SyllabusBoard,
 } from '@/lib/store';
 import { chiptuneAudio } from '@/lib/audio';
 import { storageAdapter } from '@/lib/storage';
+
+const BOARDS: SyllabusBoard[] = [
+  'General',
+  'AQA',
+  'Edexcel',
+  'OCR',
+  'IB',
+  'AP',
+];
 
 const BADGE_CONFIG: Record<
   BadgeStatus,
@@ -34,41 +46,53 @@ const BADGE_CONFIG: Record<
 > = {
   LOCKED: {
     label: 'Locked',
-    cardStyle: 'bg-slate-900/50 border-slate-700/80 opacity-65 cursor-not-allowed',
+    cardStyle:
+      'bg-slate-900/50 border-slate-700/80 opacity-65 cursor-not-allowed',
     pillStyle: 'bg-slate-800 text-slate-400',
     iconColor: 'text-slate-500',
   },
   UNLOCKED: {
     label: 'Active',
-    cardStyle: 'bg-[#10B981]/15 border-[#10B981]/70 cursor-pointer hover:border-[#FDE047]',
+    cardStyle:
+      'bg-[#10B981]/15 border-[#10B981]/70 cursor-pointer hover:border-[#FDE047]',
     pillStyle: 'bg-[#10B981]/25 text-emerald-200',
     iconColor: 'text-[#10B981]',
   },
   BRONZE: {
     label: '🥉 Bronze',
-    cardStyle: 'bg-amber-950/35 border-amber-600/70 cursor-pointer hover:border-[#FDE047]',
+    cardStyle:
+      'bg-amber-950/35 border-amber-600/70 cursor-pointer hover:border-[#FDE047]',
     pillStyle: 'bg-amber-900/60 text-amber-200',
     iconColor: 'text-amber-400',
   },
   SILVER: {
     label: '🥈 Silver',
-    cardStyle: 'bg-slate-800/60 border-slate-400/70 cursor-pointer hover:border-[#FDE047]',
+    cardStyle:
+      'bg-slate-800/60 border-slate-400/70 cursor-pointer hover:border-[#FDE047]',
     pillStyle: 'bg-slate-700 text-slate-100',
     iconColor: 'text-slate-200',
   },
   GOLD: {
     label: '🥇 Gold',
-    cardStyle: 'bg-yellow-500/15 border-[#FDE047]/80 cursor-pointer hover:border-[#FDE047]',
+    cardStyle:
+      'bg-yellow-500/15 border-[#FDE047]/80 cursor-pointer hover:border-[#FDE047]',
     pillStyle: 'bg-[#FDE047]/20 text-[#FDE047]',
     iconColor: 'text-[#FDE047]',
   },
   DIAMOND: {
     label: '💎 Diamond',
-    cardStyle: 'bg-cyan-500/15 border-cyan-300/80 cursor-pointer hover:border-[#FDE047]',
+    cardStyle:
+      'bg-cyan-500/15 border-cyan-300/80 cursor-pointer hover:border-[#FDE047]',
     pillStyle: 'bg-cyan-500/20 text-cyan-200',
     iconColor: 'text-cyan-300',
   },
 };
+
+let uploadSeq = 0;
+function nextUploadId(): string {
+  uploadSeq += 1;
+  return `rag-${Date.now()}-${uploadSeq}`;
+}
 
 export function ChalkboardRoadmap() {
   const {
@@ -79,11 +103,27 @@ export function ChalkboardRoadmap() {
     userXP,
     streakCount,
     backpackFiles,
+    createNotebook,
+    deleteNotebook,
+    addTopic,
+    deleteTopic,
     setActiveTopic,
     addBackpackFile,
     removeBackpackFile,
   } = useStudyDeskStore();
 
+  // Inline create-first-notebook form state
+  const [nbName, setNbName] = useState('');
+  const [nbBoard, setNbBoard] = useState<SyllabusBoard>('General');
+  const [confirmDeleteNotebook, setConfirmDeleteNotebook] = useState(false);
+
+  // Inline create topic form state
+  const [showAddTopic, setShowAddTopic] = useState(false);
+  const [topicCode, setTopicCode] = useState('');
+  const [topicTitle, setTopicTitle] = useState('');
+  const [topicSubtitle, setTopicSubtitle] = useState('');
+
+  // Backpack drawer state
   const [backpackOpen, setBackpackOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
@@ -117,10 +157,10 @@ export function ChalkboardRoadmap() {
     }
 
     const joined = extractedTokens.join(' ').replace(/\s+/g, ' ').trim();
-    if (joined.length > 60) {
+    if (joined.length > 40) {
       return joined;
     }
-    return `Uploaded PDF Document "${file.name}" (${currentSubject} • ${syllabusBoard} Syllabus): Core syllabus definitions, mathematical derivations, boundary assumptions, and mark-scheme checkpoints indexed for Socratic retrieval.`;
+    return `Uploaded PDF "${file.name}" (${Math.max(1, Math.round(file.size / 1024))} KB) — no uncompressed text stream found.`;
   };
 
   const chunkTextWithOverlap = (
@@ -157,7 +197,7 @@ export function ChalkboardRoadmap() {
   };
 
   const processUploadedFiles = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
+    if (!files || files.length === 0 || !currentSubject) return;
     const file = files[0];
 
     let rawText = '';
@@ -168,20 +208,18 @@ export function ChalkboardRoadmap() {
         rawText = await file.text();
       }
     } catch {
-      rawText = `Indexed ${file.name} into local RAG context.`;
+      rawText = `Uploaded note file "${file.name}"`;
     }
 
     const chunks = chunkTextWithOverlap(rawText);
     if (chunks.length === 0) {
-      chunks.push(
-        `[${file.name}] Uploaded to ${currentSubject} RAG Backpack for ${syllabusBoard} exam alignment.`
-      );
+      chunks.push(`[${file.name}] (${currentSubject})`);
     }
 
     const newFile = {
-      id: `rag-${Date.now()}`,
+      id: nextUploadId(),
       name: file.name,
-      sizeBytes: file.size || 24500,
+      sizeBytes: file.size || 0,
       type: file.name.toLowerCase().endsWith('.pdf')
         ? ('pdf' as const)
         : file.name.toLowerCase().endsWith('.mp4')
@@ -206,6 +244,30 @@ export function ChalkboardRoadmap() {
     chiptuneAudio.playPaperFlip();
   };
 
+  const handleCreateFirstNotebook = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nbName.trim()) return;
+    chiptuneAudio.playSchoolBellChime();
+    createNotebook(nbName, nbBoard);
+    setNbName('');
+  };
+
+  const handleCreateTopicSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!topicTitle.trim() || !currentSubject) return;
+    addTopic({
+      subject: currentSubject,
+      code: topicCode,
+      title: topicTitle,
+      subtitle: topicSubtitle,
+    });
+    chiptuneAudio.playPaperFlip();
+    setTopicCode('');
+    setTopicTitle('');
+    setTopicSubtitle('');
+    setShowAddTopic(false);
+  };
+
   return (
     <aside
       aria-label="Left Panel: Chalkboard Scheme of Work Roadmap"
@@ -214,23 +276,49 @@ export function ChalkboardRoadmap() {
       <div className="chalkboard-surface p-4 text-[#F1F5F9] flex-1 flex flex-col justify-between gap-4">
         <div className="space-y-4">
           {/* Chalkboard Header */}
-          <div className="flex items-center justify-between border-b border-emerald-800/70 pb-3">
-            <div>
+          <div className="flex items-center justify-between gap-2 border-b border-emerald-800/70 pb-3">
+            <div className="min-w-0">
               <span className="text-xs font-mono uppercase tracking-wider text-[#10B981] font-bold block">
-                {syllabusBoard} Curriculum
+                {currentSubject
+                  ? `${syllabusBoard} Curriculum`
+                  : 'Desk Curriculum'}
               </span>
-              <h2 className="text-lg font-bold font-serif text-[#FDFBF7]">
-                {currentSubject} Syllabus
+              <h2 className="text-lg font-bold font-serif text-[#FDFBF7] truncate">
+                {currentSubject
+                  ? `${currentSubject} Roadmap`
+                  : 'Empty Chalkboard'}
               </h2>
             </div>
-            <span className="px-2.5 py-1 rounded-lg bg-black/30 border border-emerald-800 text-xs font-mono font-bold text-[#FDE047]">
-              {
-                subjectNodes.filter(
-                  (n) => n.status !== 'LOCKED' && n.status !== 'UNLOCKED'
-                ).length
-              }
-              /{subjectNodes.length} Crowns
-            </span>
+
+            {currentSubject ? (
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="px-2.5 py-1 rounded-lg bg-black/30 border border-emerald-800 text-xs font-mono font-bold text-[#FDE047]">
+                  {
+                    subjectNodes.filter(
+                      (n) => n.status !== 'LOCKED' && n.status !== 'UNLOCKED'
+                    ).length
+                  }
+                  /{subjectNodes.length}
+                </span>
+                <button
+                  id="chalkboard-add-topic-toggle"
+                  type="button"
+                  onClick={() => {
+                    setShowAddTopic((prev) => !prev);
+                    chiptuneAudio.playPaperFlip();
+                  }}
+                  title="Add New Topic"
+                  aria-label="Add New Topic"
+                  className="p-1.5 rounded-lg bg-[#10B981] hover:bg-[#059669] text-[#FDFBF7] cursor-pointer transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <span className="px-2.5 py-1 rounded-lg bg-black/30 border border-emerald-800 text-xs font-mono font-bold text-slate-300">
+                0 Notebooks
+              </span>
+            )}
           </div>
 
           {/* Clean Scholar XP & Streak Bar */}
@@ -257,86 +345,248 @@ export function ChalkboardRoadmap() {
             </div>
           </div>
 
-          {/* Streamlined Sequential Skill Tree */}
-          <div className="space-y-2.5">
-            {subjectNodes.map((node, index) => {
-              const cfg = BADGE_CONFIG[node.status];
-              const isSelected = node.id === activeTopicId;
-              const isLocked = node.status === 'LOCKED';
-
-              return (
-                <motion.div
-                  key={node.id}
-                  id={`roadmap-node-${node.id}`}
-                  initial={{ opacity: 0, x: -16 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{
-                    duration: 0.22,
-                    delay: index * 0.05,
-                    ease: [0.22, 1, 0.36, 1],
-                  }}
-                  onClick={() => handleSelectNode(node)}
-                  role="button"
-                  tabIndex={isLocked ? -1 : 0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      handleSelectNode(node);
-                    }
-                  }}
-                  className={`rounded-xl border-2 p-3 transition-all ${cfg.cardStyle} ${
-                    isSelected
-                      ? 'border-[#FDE047] bg-[#1E3A2F] shadow-[3px_3px_0px_#FDE047] translate-x-1'
-                      : ''
-                  }`}
+          {/* CASE 1: No notebooks created yet */}
+          {!currentSubject ? (
+            <form
+              onSubmit={handleCreateFirstNotebook}
+              className="rounded-xl border-2 border-dashed border-emerald-700/80 bg-black/25 p-4 space-y-3"
+            >
+              <div className="flex items-center gap-2 text-[#FDE047]">
+                <BookPlus className="w-5 h-5 shrink-0" />
+                <h3 className="text-sm font-bold text-[#FDFBF7]">
+                  Create Your First Notebook
+                </h3>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Start fresh by naming a subject notebook. You can build custom
+                topics, flashcards, and notes inside it.
+              </p>
+              <input
+                id="chalkboard-first-notebook-input"
+                type="text"
+                required
+                placeholder="Subject name (e.g. Calculus, Biology)..."
+                value={nbName}
+                onChange={(e) => setNbName(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-[#14241E] border border-emerald-700 text-xs text-[#FDFBF7] placeholder:text-slate-400 focus:outline-none focus:border-[#FDE047]"
+              />
+              <div className="flex items-center gap-2">
+                <select
+                  aria-label="Choose curriculum standard"
+                  value={nbBoard}
+                  onChange={(e) => setNbBoard(e.target.value as SyllabusBoard)}
+                  className="px-2.5 py-2 rounded-lg bg-[#14241E] border border-emerald-700 text-xs font-mono text-[#FDFBF7] focus:outline-none focus:border-[#FDE047]"
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className={`${cfg.iconColor}`}>
-                        {isLocked ? (
-                          <Lock className="w-4 h-4" />
-                        ) : node.status === 'UNLOCKED' ? (
-                          <Unlock className="w-4 h-4" />
-                        ) : (
-                          <Crown className="w-4 h-4" />
-                        )}
+                  {BOARDS.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  id="chalkboard-create-notebook-btn"
+                  type="submit"
+                  className="flex-1 py-2 px-3 rounded-lg bg-[#FDE047] hover:bg-yellow-300 text-[#1E293B] text-xs font-bold cursor-pointer transition-colors"
+                >
+                  Open Notebook
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="space-y-3">
+              {/* Inline New Topic Form */}
+              <AnimatePresence>
+                {(showAddTopic || subjectNodes.length === 0) && (
+                  <motion.form
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    onSubmit={handleCreateTopicSubmit}
+                    className="overflow-hidden rounded-xl border border-emerald-700 bg-black/30 p-3 space-y-2.5"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-mono font-bold text-[#FDE047]">
+                        {subjectNodes.length === 0
+                          ? `Add First Topic to ${currentSubject}`
+                          : 'New Topic Node'}
                       </span>
-                      <span className="text-xs font-mono font-bold text-emerald-300">
-                        {node.code}
-                      </span>
+                      {subjectNodes.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowAddTopic(false)}
+                          className="text-xs text-slate-300 hover:text-white cursor-pointer"
+                        >
+                          Close
+                        </button>
+                      )}
                     </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <input
+                        type="text"
+                        placeholder="Code (T1)"
+                        value={topicCode}
+                        onChange={(e) => setTopicCode(e.target.value)}
+                        className="col-span-1 px-2.5 py-1.5 rounded-lg bg-[#14241E] border border-emerald-800 text-xs text-[#FDFBF7] placeholder:text-slate-400 focus:outline-none focus:border-[#FDE047]"
+                      />
+                      <input
+                        id="chalkboard-new-topic-title"
+                        type="text"
+                        required
+                        placeholder="Topic title..."
+                        value={topicTitle}
+                        onChange={(e) => setTopicTitle(e.target.value)}
+                        className="col-span-2 px-2.5 py-1.5 rounded-lg bg-[#14241E] border border-emerald-800 text-xs text-[#FDFBF7] placeholder:text-slate-400 focus:outline-none focus:border-[#FDE047]"
+                      />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Short focus or learning objective (optional)..."
+                      value={topicSubtitle}
+                      onChange={(e) => setTopicSubtitle(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-[#14241E] border border-emerald-800 text-xs text-[#FDFBF7] placeholder:text-slate-400 focus:outline-none focus:border-[#FDE047]"
+                    />
+                    <button
+                      id="chalkboard-submit-topic-btn"
+                      type="submit"
+                      className="w-full py-1.5 rounded-lg bg-[#10B981] hover:bg-[#059669] text-white text-xs font-bold cursor-pointer transition-colors"
+                    >
+                      Add Topic to Roadmap
+                    </button>
+                  </motion.form>
+                )}
+              </AnimatePresence>
 
-                    <div className="flex items-center gap-1.5">
-                      {node.spacedDue && (
-                        <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-[#F59E0B]/25 text-[#FDE047]">
-                          Review Due
-                        </span>
-                      )}
-                      {node.weakPoint && (
-                        <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-[#EF4444]/25 text-red-200">
-                          Practice
-                        </span>
-                      )}
-                      <span
-                        className={`text-xs font-mono font-semibold px-2 py-0.5 rounded ${cfg.pillStyle}`}
-                      >
-                        {cfg.label}
-                      </span>
-                    </div>
+              {/* Topic Nodes List */}
+              <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-0.5">
+                {subjectNodes.map((node, index) => {
+                  const cfg = BADGE_CONFIG[node.status];
+                  const isSelected = node.id === activeTopicId;
+                  const isLocked = node.status === 'LOCKED';
+
+                  return (
+                    <motion.div
+                      key={node.id}
+                      id={`roadmap-node-${node.id}`}
+                      initial={{ opacity: 0, x: -16 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{
+                        duration: 0.22,
+                        delay: index * 0.04,
+                        ease: [0.22, 1, 0.36, 1],
+                      }}
+                      onClick={() => handleSelectNode(node)}
+                      role="button"
+                      tabIndex={isLocked ? -1 : 0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          handleSelectNode(node);
+                        }
+                      }}
+                      className={`group rounded-xl border-2 p-3 transition-all ${cfg.cardStyle} ${
+                        isSelected
+                          ? 'border-[#FDE047] bg-[#1E3A2F] shadow-[3px_3px_0px_#FDE047] translate-x-0.5'
+                          : ''
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className={cfg.iconColor}>
+                            {isLocked ? (
+                              <Lock className="w-4 h-4" />
+                            ) : node.status === 'UNLOCKED' ? (
+                              <Unlock className="w-4 h-4" />
+                            ) : (
+                              <Crown className="w-4 h-4" />
+                            )}
+                          </span>
+                          <span className="text-xs font-mono font-bold text-emerald-300">
+                            {node.code}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          {node.spacedDue && (
+                            <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-[#F59E0B]/25 text-[#FDE047]">
+                              Review Due
+                            </span>
+                          )}
+                          {node.weakPoint && (
+                            <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-[#EF4444]/25 text-red-200">
+                              Practice
+                            </span>
+                          )}
+                          <span
+                            className={`text-xs font-mono font-semibold px-2 py-0.5 rounded ${cfg.pillStyle}`}
+                          >
+                            {cfg.label}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteTopic(node.id);
+                              chiptuneAudio.playPaperFlip();
+                            }}
+                            title="Delete topic"
+                            aria-label={`Delete topic ${node.title}`}
+                            className="p-1 rounded text-slate-400 hover:text-[#EF4444] opacity-75 group-hover:opacity-100 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <h3 className="text-sm font-bold text-[#FDFBF7] mt-1.5 leading-snug">
+                        {node.title}
+                      </h3>
+                      <p className="text-xs text-slate-300 mt-0.5 line-clamp-1">
+                        {node.subtitle}
+                      </p>
+                    </motion.div>
+                  );
+                })}
+              </div>
+
+              {/* Clean Delete Active Notebook Control */}
+              <div className="flex items-center justify-end">
+                {!confirmDeleteNotebook ? (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteNotebook(true)}
+                    className="text-xs text-slate-400 hover:text-red-300 flex items-center gap-1 cursor-pointer"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    Delete {currentSubject}
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-red-200">Delete notebook?</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        deleteNotebook(currentSubject);
+                        setConfirmDeleteNotebook(false);
+                        chiptuneAudio.playPaperFlip();
+                      }}
+                      className="px-2 py-0.5 rounded bg-[#EF4444] text-white font-bold cursor-pointer"
+                    >
+                      Yes
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteNotebook(false)}
+                      className="px-2 py-0.5 rounded bg-slate-700 text-slate-200 cursor-pointer"
+                    >
+                      No
+                    </button>
                   </div>
-
-                  <h3 className="text-sm font-bold text-[#FDFBF7] mt-1.5 leading-snug">
-                    {node.title}
-                  </h3>
-                  <p className="text-xs text-slate-300 mt-0.5 line-clamp-1">
-                    {node.subtitle}
-                  </p>
-                </motion.div>
-              );
-            })}
-          </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Collapsible RAG Backpack Drawer (Keeps Chalkboard Uncluttered) */}
+        {/* Collapsible Class Notes Backpack Drawer */}
         <div
           onDragOver={(e) => {
             e.preventDefault();
@@ -381,21 +631,28 @@ export function ChalkboardRoadmap() {
               >
                 <div
                   id="rag-backpack-dropzone"
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`rounded-xl border-2 border-dashed p-3 text-center transition-all cursor-pointer ${
-                    isDragging
-                      ? 'border-[#FDE047] bg-[#10B981]/20'
-                      : 'border-emerald-700/80 bg-black/20 hover:border-[#10B981]'
+                  onClick={() => {
+                    if (currentSubject) fileInputRef.current?.click();
+                  }}
+                  className={`rounded-xl border-2 border-dashed p-3 text-center transition-all ${
+                    !currentSubject
+                      ? 'border-slate-700 bg-black/20 opacity-60 cursor-not-allowed'
+                      : isDragging
+                        ? 'border-[#FDE047] bg-[#10B981]/20 cursor-pointer'
+                        : 'border-emerald-700/80 bg-black/20 hover:border-[#10B981] cursor-pointer'
                   }`}
                 >
                   <Upload className="w-4 h-4 text-[#10B981] mx-auto mb-1" />
                   <p className="text-xs font-medium text-slate-200">
-                    Upload PDF or Notes for Barnaby
+                    {currentSubject
+                      ? `Upload PDF or Notes for ${currentSubject}`
+                      : 'Open or create a notebook first to upload notes'}
                   </p>
                   <input
                     ref={fileInputRef}
                     type="file"
                     accept=".pdf,.txt,.md,.json,.csv"
+                    disabled={!currentSubject}
                     onChange={(e) => processUploadedFiles(e.target.files)}
                     className="hidden"
                   />
@@ -421,8 +678,10 @@ export function ChalkboardRoadmap() {
                         </span>
                       </div>
                       <button
+                        type="button"
                         onClick={() => removeBackpackFile(file.id)}
                         title="Remove file"
+                        aria-label={`Remove ${file.name}`}
                         className="p-1 text-slate-400 hover:text-[#EF4444] cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
