@@ -144,7 +144,7 @@ const INITIAL_ROADMAP: RoadmapTopicNode[] = [
     initialHints: [
       'Test two simple power functions at x = 0: compare f(x) = x³ against f(x) = x⁴.',
       "Calculate f'(0) and f''(0) for both x³ and x⁴.",
-      'Check whether the sign of curvature f\'\'(x) actually flips across x = 0.',
+      "Check whether the sign of curvature f''(x) actually flips across x = 0.",
     ],
     diagnosticQuestions: [
       {
@@ -156,7 +156,7 @@ const INITIAL_ROADMAP: RoadmapTopicNode[] = [
         options: ['x = 1', 'x = 2', 'x = 3', 'x = 0'],
         correctIndex: 2,
         socraticExplanation:
-          "At x = 3, dy/dx = 0 and d²y/dx² = 6(3) - 12 = +6 > 0, confirming positive upward concavity and a local minimum!",
+          'At x = 3, dy/dx = 0 and d²y/dx² = 6(3) - 12 = +6 > 0, confirming positive upward concavity and a local minimum!',
         xpReward: 60,
       },
       {
@@ -499,7 +499,9 @@ const INITIAL_STICKY_NOTES: StoredStickyNote[] = [
     color: 'yellow',
     rotationClass: 'rotate-2',
     masteryStatus: 'MASTERED',
-    updatedAt: Date.now() - 86400000,
+    intervalDays: 6,
+    easeFactor: 2.6,
+    updatedAt: 1762500000000,
   },
   {
     id: 'sticky-2',
@@ -511,7 +513,9 @@ const INITIAL_STICKY_NOTES: StoredStickyNote[] = [
     color: 'amber',
     rotationClass: '-rotate-1',
     masteryStatus: 'SPACED_DUE',
-    updatedAt: Date.now() - 43200000,
+    intervalDays: 2,
+    easeFactor: 2.3,
+    updatedAt: 1762510000000,
   },
   {
     id: 'sticky-3',
@@ -523,7 +527,9 @@ const INITIAL_STICKY_NOTES: StoredStickyNote[] = [
     color: 'coral',
     rotationClass: 'rotate-1',
     masteryStatus: 'WEAK_POINT',
-    updatedAt: Date.now() - 12000000,
+    intervalDays: 1,
+    easeFactor: 1.8,
+    updatedAt: 1762520000000,
   },
   {
     id: 'sticky-4',
@@ -535,7 +541,9 @@ const INITIAL_STICKY_NOTES: StoredStickyNote[] = [
     color: 'mint',
     rotationClass: '-rotate-2',
     masteryStatus: 'MASTERED',
-    updatedAt: Date.now() - 36000000,
+    intervalDays: 8,
+    easeFactor: 2.7,
+    updatedAt: 1762530000000,
   },
   {
     id: 'sticky-5',
@@ -547,7 +555,9 @@ const INITIAL_STICKY_NOTES: StoredStickyNote[] = [
     color: 'yellow',
     rotationClass: 'rotate-2',
     masteryStatus: 'SPACED_DUE',
-    updatedAt: Date.now() - 18000000,
+    intervalDays: 2,
+    easeFactor: 2.2,
+    updatedAt: 1762540000000,
   },
   {
     id: 'sticky-6',
@@ -559,7 +569,9 @@ const INITIAL_STICKY_NOTES: StoredStickyNote[] = [
     color: 'amber',
     rotationClass: '-rotate-1',
     masteryStatus: 'MASTERED',
-    updatedAt: Date.now() - 9000000,
+    intervalDays: 5,
+    easeFactor: 2.5,
+    updatedAt: 1762550000000,
   },
 ];
 
@@ -574,7 +586,7 @@ const INITIAL_BACKPACK_FILES: StoredBackpackFile[] = [
       'AQA Pure Mathematics: Differentiation from First Principles requires explicit limit notation lim(h->0) on every line before evaluating h=0.',
       'Integration by Parts standard formula: ∫ u (dv/dx) dx = uv - ∫ v (du/dx) dx. Always include limits on the [uv] bracket for definite integrals.',
     ],
-    uploadedAt: Date.now() - 172800000,
+    uploadedAt: 1762400000000,
   },
   {
     id: 'rag-2',
@@ -586,7 +598,7 @@ const INITIAL_BACKPACK_FILES: StoredBackpackFile[] = [
       'Projectile range R = (v0^2 sin 2θ)/g holds only when launch height y0 equals landing height. If launched from a cliff h0 > 0, solve the quadratic in t first.',
       'SHM total mechanical energy E = (1/2) m ω^2 A^2 remains constant in undamped motion.',
     ],
-    uploadedAt: Date.now() - 96400000,
+    uploadedAt: 1762450000000,
   },
 ];
 
@@ -638,8 +650,10 @@ interface StudyDeskStore {
     streakCount: number;
     currentSubject: SubjectName;
     syllabusBoard: SyllabusBoard;
+    topicBadges?: Record<string, string>;
     stickyNotes: StoredStickyNote[];
     backpackFiles: StoredBackpackFile[];
+    cornellNotes?: StoredCornellNote[];
   }) => void;
 }
 
@@ -726,7 +740,6 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
         return { ...node, status: promoted, weakPoint: false };
       });
 
-      // Also unlock the next sequential topic in the same subject if locked
       const currentNode = state.roadmapState.find((n) => n.id === topicId);
       if (currentNode) {
         const subjectNodes = updated.filter(
@@ -768,6 +781,9 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
         {
           ...note,
           id: `sticky-${Date.now()}`,
+          intervalDays: 1,
+          easeFactor: 2.5,
+          nextReviewAt: Date.now() + 86_400_000,
           updatedAt: Date.now(),
         },
         ...state.stickyNotes,
@@ -775,12 +791,69 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
       userXP: state.userXP + 25,
     })),
 
+  /**
+   * Updates sticky note mastery and applies SM-2 Spaced Repetition interval scheduling,
+   * dynamically syncing `spacedDue` and `weakPoint` telemetry onto the parent Roadmap topic node.
+   */
   updateStickyMastery: (id, status) =>
-    set((state) => ({
-      stickyNotes: state.stickyNotes.map((n) =>
-        n.id === id ? { ...n, masteryStatus: status, updatedAt: Date.now() } : n
-      ),
-    })),
+    set((state) => {
+      const now = Date.now();
+      let targetTopicId = '';
+
+      const updatedStickies = state.stickyNotes.map((n) => {
+        if (n.id !== id) return n;
+        targetTopicId = n.topicId;
+        const prevInterval = n.intervalDays || 1;
+        const prevEase = n.easeFactor || 2.5;
+
+        const nextEase =
+          status === 'MASTERED'
+            ? Math.min(3.0, prevEase + 0.15)
+            : status === 'WEAK_POINT'
+              ? Math.max(1.3, prevEase - 0.3)
+              : prevEase;
+
+        const nextInterval =
+          status === 'MASTERED'
+            ? Math.round(prevInterval * nextEase)
+            : status === 'SPACED_DUE'
+              ? 2
+              : 1;
+
+        return {
+          ...n,
+          masteryStatus: status,
+          intervalDays: nextInterval,
+          easeFactor: Number(nextEase.toFixed(2)),
+          nextReviewAt: now + nextInterval * 86_400_000,
+          updatedAt: now,
+        };
+      });
+
+      const updatedRoadmap = state.roadmapState.map((node) => {
+        if (node.id !== targetTopicId) return node;
+        const topicNotes = updatedStickies.filter(
+          (s) => s.topicId === node.id
+        );
+        const hasWeak = topicNotes.some(
+          (s) => s.masteryStatus === 'WEAK_POINT'
+        );
+        const hasDue = topicNotes.some(
+          (s) => s.masteryStatus === 'SPACED_DUE'
+        );
+        return {
+          ...node,
+          weakPoint: hasWeak,
+          spacedDue: hasDue,
+        };
+      });
+
+      return {
+        stickyNotes: updatedStickies,
+        roadmapState: updatedRoadmap,
+        userXP: status === 'MASTERED' ? state.userXP + 15 : state.userXP,
+      };
+    }),
 
   addBackpackFile: (file) =>
     set((state) => ({
@@ -810,12 +883,38 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
     })),
 
   hydrateFromArchive: (data) =>
-    set({
-      userXP: data.userXP,
-      streakCount: data.streakCount,
-      currentSubject: data.currentSubject,
-      syllabusBoard: data.syllabusBoard,
-      stickyNotes: data.stickyNotes,
-      backpackFiles: data.backpackFiles,
+    set((state) => {
+      const updatedRoadmap = data.topicBadges
+        ? state.roadmapState.map((n) => {
+            const savedBadge = data.topicBadges?.[n.id] as
+              | BadgeStatus
+              | undefined;
+            return savedBadge ? { ...n, status: savedBadge } : n;
+          })
+        : state.roadmapState;
+
+      const nextCornell = { ...state.cornellNotes };
+      if (Array.isArray(data.cornellNotes)) {
+        for (const cn of data.cornellNotes) {
+          nextCornell[cn.topicId] = cn;
+        }
+      }
+
+      return {
+        userXP: data.userXP,
+        streakCount: data.streakCount,
+        currentSubject: data.currentSubject,
+        syllabusBoard: data.syllabusBoard,
+        roadmapState: updatedRoadmap,
+        stickyNotes:
+          data.stickyNotes && data.stickyNotes.length > 0
+            ? data.stickyNotes
+            : state.stickyNotes,
+        backpackFiles:
+          data.backpackFiles && data.backpackFiles.length > 0
+            ? data.backpackFiles
+            : state.backpackFiles,
+        cornellNotes: nextCornell,
+      };
     }),
 }));

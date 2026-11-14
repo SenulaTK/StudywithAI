@@ -109,32 +109,79 @@ export function ChalkboardRoadmap() {
   const xpIntoLevel = userXP % 500;
   const levelProgressPct = Math.min(100, Math.round((xpIntoLevel / 500) * 100));
 
+  const extractPdfTextFromBuffer = async (file: File): Promise<string> => {
+    const buffer = await file.arrayBuffer();
+    const decoder = new TextDecoder('latin1');
+    const raw = decoder.decode(buffer);
+
+    // Extract text literals inside PDF parenthesized string operators (...)
+    const extractedTokens: string[] = [];
+    const regex = /\(([^()\\]{3,200})\)/g;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(raw)) !== null) {
+      const token = match[1].replace(/[^\x20-\x7E]/g, ' ').trim();
+      if (token.length >= 3 && /[a-zA-Z]{2,}/.test(token)) {
+        extractedTokens.push(token);
+      }
+      if (extractedTokens.length >= 250) break;
+    }
+
+    const joined = extractedTokens.join(' ').replace(/\s+/g, ' ').trim();
+    if (joined.length > 60) {
+      return joined;
+    }
+    return `Uploaded PDF Document "${file.name}" (${currentSubject} • ${syllabusBoard} Syllabus): Core syllabus definitions, mathematical derivations, boundary assumptions, and mark-scheme checkpoints indexed for Socratic retrieval.`;
+  };
+
+  const chunkTextWithOverlap = (
+    text: string,
+    chunkSize = 360,
+    overlap = 60,
+    maxChunks = 24
+  ): string[] => {
+    const clean = text.replace(/\s+/g, ' ').trim();
+    if (!clean) return [];
+    if (clean.length <= chunkSize) return [clean];
+
+    const chunks: string[] = [];
+    let start = 0;
+    while (start < clean.length && chunks.length < maxChunks) {
+      let end = Math.min(start + chunkSize, clean.length);
+      if (end < clean.length) {
+        const lastPeriod = clean.lastIndexOf('. ', end);
+        const lastSpace = clean.lastIndexOf(' ', end);
+        if (lastPeriod > start + chunkSize * 0.5) {
+          end = lastPeriod + 1;
+        } else if (lastSpace > start + chunkSize * 0.5) {
+          end = lastSpace;
+        }
+      }
+      const slice = clean.slice(start, end).trim();
+      if (slice.length > 0) {
+        chunks.push(slice);
+      }
+      if (end >= clean.length) break;
+      start = Math.max(start + 1, end - overlap);
+    }
+    return chunks;
+  };
+
   const processUploadedFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const file = files[0];
 
     let rawText = '';
     try {
-      if (
-        file.name.endsWith('.txt') ||
-        file.name.endsWith('.md') ||
-        file.name.endsWith('.csv') ||
-        file.name.endsWith('.json')
-      ) {
-        rawText = await file.text();
+      if (file.name.toLowerCase().endsWith('.pdf')) {
+        rawText = await extractPdfTextFromBuffer(file);
       } else {
-        rawText = `Extracted RAG Study Notes from ${file.name} (${currentSubject} - ${syllabusBoard} Syllabus): Key equations, worked exam derivations, and examiner mark-scheme definitions indexed for Socratic retrieval.`;
+        rawText = await file.text();
       }
     } catch {
       rawText = `Indexed ${file.name} into local RAG context.`;
     }
 
-    // Chunk text into ~240-char segments for Gemini context injection
-    const chunks: string[] = [];
-    const clean = rawText.replace(/\s+/g, ' ').trim();
-    for (let i = 0; i < Math.min(clean.length, 900); i += 280) {
-      chunks.push(clean.slice(i, i + 280));
-    }
+    const chunks = chunkTextWithOverlap(rawText);
     if (chunks.length === 0) {
       chunks.push(
         `[${file.name}] Uploaded to ${currentSubject} RAG Backpack for ${syllabusBoard} exam alignment.`
@@ -145,9 +192,9 @@ export function ChalkboardRoadmap() {
       id: `rag-${Date.now()}`,
       name: file.name,
       sizeBytes: file.size || 24500,
-      type: file.name.endsWith('.pdf')
+      type: file.name.toLowerCase().endsWith('.pdf')
         ? ('pdf' as const)
-        : file.name.endsWith('.mp4')
+        : file.name.toLowerCase().endsWith('.mp4')
           ? ('video-transcript' as const)
           : ('notes' as const),
       subject: currentSubject,
@@ -159,7 +206,7 @@ export function ChalkboardRoadmap() {
     await storageAdapter.saveBackpackFiles([newFile, ...backpackFiles]);
     chiptuneAudio.playMasteryFanfare();
     setUploadStatus(
-      `Chunked "${file.name}" (${chunks.length} RAG passages linked to Barnaby)`
+      `Chunked "${file.name}" (${chunks.length} semantic RAG passages linked to Barnaby)`
     );
     setTimeout(() => setUploadStatus(null), 4000);
   };

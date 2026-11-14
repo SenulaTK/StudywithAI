@@ -1,22 +1,119 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { DeskHeader } from '@/components/header/DeskHeader';
 import { ChalkboardRoadmap } from '@/components/roadmap/ChalkboardRoadmap';
 import { WorkbookCanvas } from '@/components/workbook/WorkbookCanvas';
 import { StickyNoteDesk } from '@/components/studio/StickyNoteDesk';
-import { useStudyDeskStore } from '@/lib/store';
+import {
+  useStudyDeskStore,
+  type SubjectName,
+  type SyllabusBoard,
+} from '@/lib/store';
 import { storageAdapter } from '@/lib/storage';
 
 export default function StudyDeskPage() {
-  const { cameraPan, stickyNotes, backpackFiles } = useStudyDeskStore();
+  const {
+    cameraPan,
+    userXP,
+    streakCount,
+    currentSubject,
+    syllabusBoard,
+    roadmapState,
+    stickyNotes,
+    backpackFiles,
+    hydrateFromArchive,
+  } = useStudyDeskStore();
 
-  // Persist initial or updated state to Local-First Dexie IndexedDB & WebOPFS
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  // Step 1: Hydrate saved state from Local-First Dexie IndexedDB on initial mount
   useEffect(() => {
+    let mounted = true;
+    async function hydrateFromDexie() {
+      try {
+        const [savedStickies, savedBackpack, savedCornell, savedMeta] =
+          await Promise.all([
+            storageAdapter.loadStickyNotes(),
+            storageAdapter.loadBackpackFiles(),
+            storageAdapter.loadCornellNotes(),
+            storageAdapter.loadDeskMeta(),
+          ]);
+
+        if (!mounted) return;
+
+        const hasSavedData =
+          savedStickies.length > 0 ||
+          savedBackpack.length > 0 ||
+          savedCornell.length > 0 ||
+          savedMeta !== null;
+
+        if (hasSavedData) {
+          const stateSnapshot = useStudyDeskStore.getState();
+          hydrateFromArchive({
+            userXP: savedMeta?.userXP ?? stateSnapshot.userXP,
+            streakCount: savedMeta?.streakCount ?? stateSnapshot.streakCount,
+            currentSubject:
+              (savedMeta?.currentSubject as SubjectName) ??
+              stateSnapshot.currentSubject,
+            syllabusBoard:
+              (savedMeta?.syllabusBoard as SyllabusBoard) ??
+              stateSnapshot.syllabusBoard,
+            topicBadges: savedMeta?.topicBadges,
+            stickyNotes:
+              savedStickies.length > 0
+                ? savedStickies
+                : stateSnapshot.stickyNotes,
+            backpackFiles:
+              savedBackpack.length > 0
+                ? savedBackpack
+                : stateSnapshot.backpackFiles,
+            cornellNotes: savedCornell,
+          });
+        }
+      } catch {
+        // Fallback to default in-memory state if IndexedDB is blocked
+      } finally {
+        if (mounted) {
+          setIsHydrated(true);
+        }
+      }
+    }
+
+    hydrateFromDexie();
+    return () => {
+      mounted = false;
+    };
+  }, [hydrateFromArchive]);
+
+  // Step 2: Persist updates to Dexie IndexedDB only AFTER initial hydration completes
+  useEffect(() => {
+    if (!isHydrated) return;
     storageAdapter.saveStickyNotes(stickyNotes).catch(() => {});
+  }, [isHydrated, stickyNotes]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
     storageAdapter.saveBackpackFiles(backpackFiles).catch(() => {});
-  }, [stickyNotes, backpackFiles]);
+  }, [isHydrated, backpackFiles]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    const topicBadges: Record<string, string> = {};
+    roadmapState.forEach((n) => {
+      topicBadges[n.id] = n.status;
+    });
+    storageAdapter
+      .saveDeskMeta({
+        userXP,
+        streakCount,
+        currentSubject,
+        syllabusBoard,
+        topicBadges,
+      })
+      .catch(() => {});
+  }, [isHydrated, userXP, streakCount, currentSubject, syllabusBoard, roadmapState]);
 
   return (
     <div className="min-h-screen flex flex-col justify-between desk-wood-surface selection:bg-[#FDE047]">

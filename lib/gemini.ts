@@ -32,6 +32,17 @@ export interface BarnabyResponse {
   isSimulatedFallback: boolean;
 }
 
+export interface AskBarnabyParams {
+  userMessage: string;
+  subject: string;
+  topicTitle: string;
+  syllabusBoard: string;
+  mode: TutorMode;
+  ragContext?: string[];
+  conversationHistory?: Array<{ role: 'user' | 'barnaby'; text: string }>;
+  customKeys?: [string, string, string];
+}
+
 export const BARNABY_SYSTEM_PROMPT = `You are Professor Barnaby, a warm, scholarly paper-craft owl and Socratic AI teacher perched on a student's tactile wooden study desk.
 
 CORE PEDAGOGICAL DIRECTIVES:
@@ -51,13 +62,43 @@ Respond in valid JSON matching this schema:
   "hintSteps": ["Step 1 subtle nudge", "Step 2 intermediate bridge", "Step 3 structural check"]
 }`;
 
+/**
+ * Ranks RAG backpack chunks by keyword & token overlap against the student's query and active topic,
+ * returning the top-k most relevant passages to keep cognitive & token load optimal.
+ */
+export function rankRelevantRagChunks(
+  chunks: string[],
+  query: string,
+  topicTitle: string,
+  topK = 4
+): string[] {
+  if (!chunks || chunks.length <= topK) return chunks || [];
+  const terms = `${query} ${topicTitle}`
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 2);
+
+  const scored = chunks.map((chunk, idx) => {
+    const lower = chunk.toLowerCase();
+    let score = 0;
+    for (const term of terms) {
+      if (lower.includes(term)) score += 2;
+    }
+    return { chunk, score, idx };
+  });
+
+  scored.sort((a, b) => b.score - a.score || a.idx - b.idx);
+  return scored.slice(0, topK).map((s) => s.chunk);
+}
+
 class GeminiKeyRotator {
   private currentIndex = 0;
   private customKeys: [string, string, string] = ['', '', ''];
   private slots: KeySlotStatus[] = [
     {
       id: 'KEY_1',
-      envName: 'NEXT_PUBLIC_GEMINI_KEY_1',
+      envName: 'GEMINI_KEY_1 / NEXT_PUBLIC_GEMINI_KEY_1',
       configured: false,
       requestCount: 0,
       lastStatus: 'IDLE',
@@ -66,7 +107,7 @@ class GeminiKeyRotator {
     },
     {
       id: 'KEY_2',
-      envName: 'NEXT_PUBLIC_GEMINI_KEY_2',
+      envName: 'GEMINI_KEY_2 / NEXT_PUBLIC_GEMINI_KEY_2',
       configured: false,
       requestCount: 0,
       lastStatus: 'IDLE',
@@ -75,7 +116,7 @@ class GeminiKeyRotator {
     },
     {
       id: 'KEY_3',
-      envName: 'NEXT_PUBLIC_GEMINI_KEY_3',
+      envName: 'GEMINI_KEY_3 / NEXT_PUBLIC_GEMINI_KEY_3',
       configured: false,
       requestCount: 0,
       lastStatus: 'IDLE',
@@ -84,21 +125,22 @@ class GeminiKeyRotator {
     },
   ];
 
-  private getRawKeys(): [string, string, string] {
+  private getRawKeys(overrideKeys?: [string, string, string]): [string, string, string] {
+    const source = overrideKeys || this.customKeys;
     const k1 =
-      this.customKeys[0] ||
+      source[0] ||
       (typeof process !== 'undefined'
-        ? process.env.NEXT_PUBLIC_GEMINI_KEY_1 || ''
+        ? process.env.GEMINI_KEY_1 || process.env.NEXT_PUBLIC_GEMINI_KEY_1 || ''
         : '');
     const k2 =
-      this.customKeys[1] ||
+      source[1] ||
       (typeof process !== 'undefined'
-        ? process.env.NEXT_PUBLIC_GEMINI_KEY_2 || ''
+        ? process.env.GEMINI_KEY_2 || process.env.NEXT_PUBLIC_GEMINI_KEY_2 || ''
         : '');
     const k3 =
-      this.customKeys[2] ||
+      source[2] ||
       (typeof process !== 'undefined'
-        ? process.env.NEXT_PUBLIC_GEMINI_KEY_3 || ''
+        ? process.env.GEMINI_KEY_3 || process.env.NEXT_PUBLIC_GEMINI_KEY_3 || ''
         : '');
     return [k1.trim(), k2.trim(), k3.trim()];
   }
@@ -108,8 +150,12 @@ class GeminiKeyRotator {
     this.refreshSlotConfig();
   }
 
-  public refreshSlotConfig(): KeySlotStatus[] {
-    const raw = this.getRawKeys();
+  public getCustomKeys(): [string, string, string] {
+    return [...this.customKeys] as [string, string, string];
+  }
+
+  public refreshSlotConfig(overrideKeys?: [string, string, string]): KeySlotStatus[] {
+    const raw = this.getRawKeys(overrideKeys);
     this.slots.forEach((slot, idx) => {
       slot.configured = raw[idx].length > 8;
       if (slot.cooldownUntil !== null && Date.now() > slot.cooldownUntil) {
@@ -132,20 +178,54 @@ class GeminiKeyRotator {
   }
 
   /**
-   * Selects the next available API key in round-robin order and automatically
-   * retries across the 3-key pool if a 429 (Rate Limit) or 500/503 (Server Error) occurs.
+   * Client-safe entry point that delegates to the server-side `/api/barnaby` proxy first
+   * (protecting server environment keys), falling back to local execution if offline.
    */
-  public async askBarnaby(params: {
-    userMessage: string;
-    subject: string;
-    topicTitle: string;
-    syllabusBoard: string;
-    mode: TutorMode;
-    ragContext?: string[];
-    conversationHistory?: Array<{ role: 'user' | 'barnaby'; text: string }>;
-  }): Promise<BarnabyResponse> {
-    const rawKeys = this.getRawKeys();
-    this.refreshSlotConfig();
+  public async askBarnaby(params: AskBarnabyParams): Promise<BarnabyResponse> {
+    if (typeof window !== 'undefined') {
+      try {
+        const res = await fetch('/api/barnaby', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...params,
+            customKeys: this.customKeys,
+          }),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as BarnabyResponse;
+          // Record telemetry on the client mirror
+          const slotIdx = this.slots.findIndex((s) => s.id === data.keyUsed);
+          if (slotIdx !== -1) {
+            this.slots[slotIdx].requestCount += 1;
+            this.slots[slotIdx].lastStatus = 'HEALTHY';
+            this.slots[slotIdx].lastUsedAt = Date.now();
+          }
+          this.currentIndex = (this.currentIndex + 1) % 3;
+          return data;
+        }
+      } catch {
+        // Fall through to local execution if server route is unreachable
+      }
+    }
+    return this.executeWithRotator(params);
+  }
+
+  /**
+   * Executes the 3-key round-robin selector with automated fallback retry logic on 429/500 errors.
+   */
+  public async executeWithRotator(
+    params: AskBarnabyParams
+  ): Promise<BarnabyResponse> {
+    const rawKeys = this.getRawKeys(params.customKeys);
+    this.refreshSlotConfig(params.customKeys);
+
+    const rankedRag = rankRelevantRagChunks(
+      params.ragContext || [],
+      params.userMessage,
+      params.topicTitle,
+      4
+    );
 
     const maxAttempts = 3;
     let retriesAttempted = 0;
@@ -157,7 +237,6 @@ class GeminiKeyRotator {
       const slot = this.slots[slotIndex];
       const apiKey = rawKeys[slotIndex];
 
-      // Skip if in cooldown unless it's our last resort
       if (
         slot.cooldownUntil &&
         Date.now() < slot.cooldownUntil &&
@@ -172,16 +251,14 @@ class GeminiKeyRotator {
       slot.lastStatus = 'ACTIVE';
 
       if (!apiKey || apiKey.length < 8) {
-        // If no key in this slot, try next slot if any other slot has a key
         const anyConfigured = rawKeys.some((k) => k.length >= 8);
         if (anyConfigured && attempt < maxAttempts - 1) {
           retriesAttempted++;
           continue;
         }
-        // Otherwise use deterministic Socratic pedagogical engine with round-robin slot attribution
         slot.lastStatus = 'HEALTHY';
         return this.buildCuratedSocraticResponse(
-          params,
+          { ...params, ragContext: rankedRag },
           slot.id,
           retriesAttempted
         );
@@ -197,8 +274,8 @@ class GeminiKeyRotator {
               : 'Mode: Exam Practice. Frame your guidance around command words, mark-scheme precision, and common examiner pitfalls.';
 
         const ragSnippet =
-          params.ragContext && params.ragContext.length > 0
-            ? `\n\nSTUDENT BACKPACK RAG NOTES:\n${params.ragContext.join('\n---\n')}`
+          rankedRag.length > 0
+            ? `\n\nTOP RELEVANT STUDENT BACKPACK RAG NOTES:\n${rankedRag.join('\n---\n')}`
             : '';
 
         const historySnippet =
@@ -279,7 +356,7 @@ Student Input: "${params.userMessage}"`;
         retriesAttempted++;
         if (attempt === maxAttempts - 1) {
           return this.buildCuratedSocraticResponse(
-            params,
+            { ...params, ragContext: rankedRag },
             slot.id,
             retriesAttempted
           );
@@ -288,7 +365,7 @@ Student Input: "${params.userMessage}"`;
     }
 
     return this.buildCuratedSocraticResponse(
-      params,
+      { ...params, ragContext: rankedRag },
       this.slots[this.currentIndex].id,
       retriesAttempted
     );
@@ -322,9 +399,12 @@ Student Input: "${params.userMessage}"`;
     retriesAttempted: number
   ): BarnabyResponse {
     const input = params.userMessage.toLowerCase();
-    const hasRag = params.ragContext && params.ragContext.length > 0;
-    const ragNote = hasRag
-      ? ` I also cross-referenced your pinned Backpack notes to keep our notation aligned with your class materials.`
+    const topSnippet =
+      params.ragContext && params.ragContext.length > 0
+        ? params.ragContext[0].slice(0, 90)
+        : '';
+    const ragNote = topSnippet
+      ? ` I also cross-referenced your Backpack note ("${topSnippet}...") to align with your syllabus notation.`
       : '';
 
     if (params.mode === 'feynman') {
@@ -373,7 +453,6 @@ Student Input: "${params.userMessage}"`;
       };
     }
 
-    // Default Socratic Mode tailored by subject & student query
     if (
       input.includes('why') ||
       input.includes('how') ||
@@ -386,7 +465,7 @@ Student Input: "${params.userMessage}"`;
         socraticFollowUp: `If we hold every other term constant and double the main input in ${params.topicTitle}, does the restoring response grow linearly, quadratically, or decay?`,
         latexFormula:
           params.subject === 'Mathematics'
-            ? 'y - y_1 = f\'(x_1)(x - x_1)'
+            ? "y - y_1 = f'(x_1)(x - x_1)"
             : params.subject === 'Physics'
               ? 'T = 2\\pi \\sqrt{\\frac{L}{g}} \\quad (\\theta \\ll 1\\text{ rad})'
               : 'k = A e^{-E_a / (RT)}',
@@ -408,7 +487,7 @@ Student Input: "${params.userMessage}"`;
       socraticFollowUp: `Now let us test the edge case: under what extreme condition does this model break down or require a second-order correction?`,
       latexFormula:
         params.subject === 'Mathematics'
-          ? 'f(x) \\approx f(a) + f\'(a)(x-a) + \\frac{f\'\'(a)}{2!}(x-a)^2'
+          ? "f(x) \\approx f(a) + f'(a)(x-a) + \\frac{f''(a)}{2!}(x-a)^2"
           : params.subject === 'Physics'
             ? 'y(x,t) = v_0 t \\sin\\theta - \\frac{1}{2}gt^2'
             : '\\text{pH} = \\text{p}K_a + \\log_{10}\\left(\\frac{[\\text{A}^-]}{[\\text{HA}]}\\right)',

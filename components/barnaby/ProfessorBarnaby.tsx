@@ -55,6 +55,16 @@ export function ProfessorBarnaby({
 
   // Stream text with synchronized 8-bit chiptune Web Audio oscillator syllables
   useEffect(() => {
+    const prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (prefersReducedMotion) {
+      setDisplayedText(speechText);
+      setIsSpeaking(false);
+      return;
+    }
+
     let index = 0;
     setDisplayedText('');
     setIsSpeaking(true);

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BlockMath } from 'react-katex';
 import {
   Paperclip,
@@ -96,6 +96,12 @@ export function WorkbookCanvas() {
     keyUsed: 'KEY_1' | 'KEY_2' | 'KEY_3';
     trigger: number;
   } | null>(null);
+
+  // Reset active speech override and unfolded hint count when switching Roadmap topics
+  useEffect(() => {
+    setLatestBarnabySpeech(null);
+    setRevealedHintsCount(1);
+  }, [activeTopicId]);
 
   const topicHistory = workbookDialogues[activeNode.id] || [];
 

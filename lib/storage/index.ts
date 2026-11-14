@@ -15,6 +15,9 @@ export interface StoredStickyNote {
   color: 'yellow' | 'mint' | 'amber' | 'coral';
   rotationClass: string;
   masteryStatus: 'MASTERED' | 'SPACED_DUE' | 'WEAK_POINT' | 'NEW';
+  intervalDays?: number;
+  easeFactor?: number;
+  nextReviewAt?: number;
   updatedAt: number;
 }
 
@@ -36,6 +39,14 @@ export interface StoredCornellNote {
   notes: string;
   summary: string;
   updatedAt: number;
+}
+
+export interface StoredDeskMeta {
+  userXP: number;
+  streakCount: number;
+  currentSubject: string;
+  syllabusBoard: string;
+  topicBadges: Record<string, string>;
 }
 
 export interface DeskSnapshotArchive {
@@ -159,6 +170,25 @@ export class BYOSStorageAdapter {
     return deskDb.cornellNotes.toArray();
   }
 
+  public async saveDeskMeta(meta: StoredDeskMeta): Promise<void> {
+    if (!deskDb) return;
+    await deskDb.kvMeta.put({
+      key: 'desk-meta-v1',
+      value: JSON.stringify(meta),
+    });
+  }
+
+  public async loadDeskMeta(): Promise<StoredDeskMeta | null> {
+    if (!deskDb) return null;
+    const record = await deskDb.kvMeta.get('desk-meta-v1');
+    if (!record) return null;
+    try {
+      return JSON.parse(record.value) as StoredDeskMeta;
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * Exports a zero-cloud `.desk` archive file containing all student mastery state,
    * sticky notes, RAG backpack chunks, and Cornell notes.
@@ -205,6 +235,13 @@ export class BYOSStorageAdapter {
           await this.saveCornellNote(cn);
         }
       }
+      await this.saveDeskMeta({
+        userXP: parsed.userXP,
+        streakCount: parsed.streakCount,
+        currentSubject: parsed.currentSubject,
+        syllabusBoard: parsed.syllabusBoard,
+        topicBadges: parsed.topicBadges || {},
+      });
     }
     return parsed;
   }

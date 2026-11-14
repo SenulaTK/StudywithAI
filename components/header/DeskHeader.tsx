@@ -69,6 +69,7 @@ export function DeskHeader() {
     audioMuted,
     stickyNotes,
     backpackFiles,
+    cornellNotes,
     roadmapState,
     setSubject,
     setSyllabusBoard,
@@ -97,6 +98,15 @@ export function DeskHeader() {
     useState<StorageProviderType>(storageAdapter.getProvider());
   const [archiveToast, setArchiveToast] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!showVaultModal) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowVaultModal(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [showVaultModal]);
 
   useEffect(() => {
     if (!pomodoroRunning) return;
@@ -159,7 +169,7 @@ export function DeskHeader() {
       topicBadges,
       stickyNotes,
       backpackFiles,
-      cornellNotes: [],
+      cornellNotes: Object.values(cornellNotes),
     });
     setArchiveToast('Exported zero-cloud .desk archive to your device!');
     setTimeout(() => setArchiveToast(null), 3500);
@@ -175,8 +185,10 @@ export function DeskHeader() {
         streakCount: archive.streakCount,
         currentSubject: (archive.currentSubject as SubjectName) || 'Mathematics',
         syllabusBoard: (archive.syllabusBoard as SyllabusBoard) || 'AQA',
+        topicBadges: archive.topicBadges,
         stickyNotes: archive.stickyNotes || stickyNotes,
         backpackFiles: archive.backpackFiles || backpackFiles,
+        cornellNotes: archive.cornellNotes,
       });
       chiptuneAudio.playMasteryFanfare();
       setArchiveToast(`Restored .desk snapshot (${archive.stickyNotes.length} notes)!`);

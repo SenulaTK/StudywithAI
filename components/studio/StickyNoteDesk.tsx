@@ -47,6 +47,57 @@ const STICKY_COLORS: Record<
   },
 };
 
+const TOPIC_SIM_LABELS: Record<
+  string,
+  { title: string; sliderA: string; sliderB: string }
+> = {
+  'math-1': {
+    title: 'M1.1 Secant-to-Tangent Limit Explorer',
+    sliderA: 'Secant Step h (Δx → 0)',
+    sliderB: 'Base Point Coordinate x₀',
+  },
+  'math-2': {
+    title: 'M1.2 Cubic Stationary & Inflection Curvature',
+    sliderA: 'Probe Coordinate x₀',
+    sliderB: 'Cubic Steepness Parameter k',
+  },
+  'math-3': {
+    title: 'M1.3 Integration by Parts Area Accumulator',
+    sliderA: 'Upper Bound b (∫₀ᵇ x·eˣ dx)',
+    sliderB: 'Riemann Sub-Intervals N',
+  },
+  'math-4': {
+    title: 'M1.4 Separable ODE Phase & Decay Field',
+    sliderA: 'Decay Constant k (dy/dt = -ky)',
+    sliderB: 'Initial Condition Amplitude y(0)',
+  },
+  'phys-1': {
+    title: 'P2.1 Ballistic Parabolic Trajectory',
+    sliderA: 'Launch Angle θ (15° → 80°)',
+    sliderB: 'Initial Launch Velocity v₀ (m/s)',
+  },
+  'phys-2': {
+    title: 'P2.2 Simple Harmonic Oscillator & Damping',
+    sliderA: 'Angular Frequency ω (rad/s)',
+    sliderB: 'Damping Ratio ζ (Light → Heavy)',
+  },
+  'phys-3': {
+    title: 'P2.3 Gravitational Equipotential & Orbit',
+    sliderA: 'Orbital Radius r / R_planet',
+    sliderB: 'Central Mass M (×10²⁴ kg)',
+  },
+  'chem-1': {
+    title: 'C3.1 Le Chatelier Dynamic Equilibrium Shift',
+    sliderA: 'System Pressure Perturbation P',
+    sliderB: 'Forward Rate Constant k_f',
+  },
+  'chem-2': {
+    title: 'C3.2 Maxwell-Boltzmann & Catalyst Barrier',
+    sliderA: 'Temperature T (Kelvin)',
+    sliderB: 'Catalyst Activation Threshold E_a',
+  },
+};
+
 export function StickyNoteDesk() {
   const {
     currentSubject,
@@ -67,8 +118,6 @@ export function StickyNoteDesk() {
     useState<StoredStickyNote['color']>('yellow');
 
   // Interactive STEM Simulation Brass/Wood Sliders State
-  // Param A: e.g. Secant step h (Maths), Launch Angle θ (Physics), Temperature T (Chemistry)
-  // Param B: e.g. Tangent point x0 (Maths), Launch Velocity v0 (Physics), Activation Energy Ea (Chemistry)
   const [paramA, setParamA] = useState(45);
   const [paramB, setParamB] = useState(60);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -98,15 +147,25 @@ export function StickyNoteDesk() {
     }
   }, [activeTopicId, cornellNotes]);
 
-  // Interactive HTML5 Canvas STEM Simulation Renderer
+  // Topic-Aware High-DPI HTML5 Canvas STEM Simulation Renderer
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const w = canvas.width;
-    const h = canvas.height;
+    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    const logicalW = 360;
+    const logicalH = 175;
+    if (canvas.width !== logicalW * dpr || canvas.height !== logicalH * dpr) {
+      canvas.width = logicalW * dpr;
+      canvas.height = logicalH * dpr;
+    }
+    ctx.save();
+    ctx.scale(dpr, dpr);
+
+    const w = logicalW;
+    const h = logicalH;
     ctx.clearRect(0, 0, w, h);
 
     // Subtle dark slate grid background
@@ -138,8 +197,245 @@ export function StickyNoteDesk() {
     ctx.lineTo(32, 16);
     ctx.stroke();
 
-    if (currentSubject === 'Mathematics') {
-      // Draw curve f(x) = 0.012 * (x - 40)^2 + 25 and secant chord with step h
+    if (activeTopicId === 'math-2') {
+      // Cubic Stationary Points & Inflection Saddle: y = k*(x^3 - 3x)
+      const scaleK = 0.5 + (paramB / 100) * 1.1;
+      const probeX = -1.6 + (paramA / 100) * 3.2;
+      const centerX = w / 2 + 10;
+      const centerY = h / 2 + 6;
+
+      const cubicY = (xVal: number) =>
+        centerY - scaleK * (xVal * xVal * xVal - 3 * xVal) * 20;
+
+      ctx.strokeStyle = '#10B981';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      for (let px = 36; px < w - 18; px += 2) {
+        const xv = (px - centerX) / 55;
+        const py = cubicY(xv);
+        if (px === 36) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+
+      // Tangent at probeX
+      const pxProbe = centerX + probeX * 55;
+      const pyProbe = cubicY(probeX);
+      const deriv = scaleK * (3 * probeX * probeX - 3);
+      const screenSlope = (-deriv * 20) / 55;
+
+      ctx.strokeStyle = '#FDE047';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(pxProbe - 40, pyProbe - screenSlope * 40);
+      ctx.lineTo(pxProbe + 40, pyProbe + screenSlope * 40);
+      ctx.stroke();
+
+      ctx.fillStyle = '#EF4444';
+      ctx.beginPath();
+      ctx.arc(pxProbe, pyProbe, 5, 0, Math.PI * 2);
+      ctx.fill();
+
+      const secondDeriv = scaleK * 6 * probeX;
+      ctx.fillStyle = '#F1F5F9';
+      ctx.font = '11px monospace';
+      ctx.fillText(
+        `x₀=${probeX.toFixed(2)} | f'(x₀)=${deriv.toFixed(2)} | f''(x₀)=${secondDeriv.toFixed(2)}`,
+        38,
+        25
+      );
+    } else if (activeTopicId === 'math-3') {
+      // Integration by Parts Riemann Accumulation: ∫ x * e^(0.4x) dx
+      const upperX = 80 + (paramA / 100) * 240;
+      const numRects = Math.max(4, Math.round(4 + (paramB / 100) * 20));
+      const f = (px: number) => {
+        const u = (px - 32) / 90;
+        return h - 26 - u * Math.exp(0.45 * u) * 18;
+      };
+
+      const stepW = (upperX - 32) / numRects;
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.28)';
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.65)';
+      for (let i = 0; i < numRects; i++) {
+        const rx = 32 + i * stepW;
+        const ry = f(rx + stepW * 0.5);
+        ctx.fillRect(rx, ry, stepW, h - 26 - ry);
+        ctx.strokeRect(rx, ry, stepW, h - 26 - ry);
+      }
+
+      ctx.strokeStyle = '#FDE047';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      for (let px = 32; px < w - 16; px += 2) {
+        const py = f(px);
+        if (px === 32) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+
+      const boundVal = ((upperX - 32) / 90).toFixed(2);
+      ctx.fillStyle = '#F1F5F9';
+      ctx.font = '11px monospace';
+      ctx.fillText(
+        `∫₀^${boundVal} x·eˣ dx | Sub-intervals N = ${numRects}`,
+        38,
+        25
+      );
+    } else if (activeTopicId === 'math-4') {
+      // Separable ODE Slope Field & Exponential Solution Curve: dy/dt = -k*y
+      const kRate = 0.4 + (paramA / 100) * 1.8;
+      const y0Amp = 30 + (paramB / 100) * 95;
+
+      // Draw slope field segments
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.35)';
+      ctx.lineWidth = 1;
+      for (let gx = 48; gx < w - 20; gx += 26) {
+        for (let gy = 36; gy < h - 32; gy += 22) {
+          const yVal = h - 26 - gy;
+          const dy = -kRate * (yVal / 90);
+          const angle = Math.atan2(-dy * 12, 12);
+          ctx.beginPath();
+          ctx.moveTo(gx - 6 * Math.cos(angle), gy - 6 * Math.sin(angle));
+          ctx.lineTo(gx + 6 * Math.cos(angle), gy + 6 * Math.sin(angle));
+          ctx.stroke();
+        }
+      }
+
+      ctx.strokeStyle = '#10B981';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      for (let px = 32; px < w - 16; px += 2) {
+        const t = (px - 32) / 95;
+        const py = h - 26 - y0Amp * Math.exp(-kRate * t);
+        if (px === 32) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+
+      ctx.fillStyle = '#F1F5F9';
+      ctx.font = '11px monospace';
+      ctx.fillText(
+        `y(t) = y₀·e^(-kt) | k = ${kRate.toFixed(2)} s⁻¹ | y₀ = ${y0Amp.toFixed(0)}`,
+        38,
+        25
+      );
+    } else if (activeTopicId === 'phys-2') {
+      // Simple Harmonic Motion Damped Cosine Wave: x(t) = A e^(-ζωt) cos(ωt)
+      const omega = 1.8 + (paramA / 100) * 4.5;
+      const damping = (paramB / 100) * 0.45;
+      const midY = (h - 26 + 24) / 2;
+
+      ctx.strokeStyle = 'rgba(253, 224, 71, 0.3)';
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(32, midY);
+      ctx.lineTo(w - 16, midY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.strokeStyle = '#10B981';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      for (let px = 32; px < w - 16; px += 2) {
+        const t = (px - 32) / 65;
+        const env = 54 * Math.exp(-damping * t);
+        const py = midY - env * Math.cos(omega * t);
+        if (px === 32) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+
+      ctx.fillStyle = '#F1F5F9';
+      ctx.font = '11px monospace';
+      ctx.fillText(
+        `SHM: ω = ${omega.toFixed(1)} rad/s | Damping ζ = ${damping.toFixed(2)}`,
+        38,
+        25
+      );
+    } else if (activeTopicId === 'phys-3') {
+      // Gravitational Equipotential Circles & Satellite Orbit
+      const cx = w / 2 + 10;
+      const cy = h / 2 + 4;
+      const orbitR = 24 + (paramA / 100) * 48;
+      const massFactor = 0.6 + (paramB / 100) * 1.4;
+
+      // Equipotential rings
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.25)';
+      ctx.lineWidth = 1;
+      [22, 36, 52, 68].forEach((r) => {
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.stroke();
+      });
+
+      // Central Planet
+      ctx.fillStyle = '#10B981';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 10 * Math.sqrt(massFactor), 0, Math.PI * 2);
+      ctx.fill();
+
+      // Active Satellite Equipotential Orbit
+      ctx.strokeStyle = '#FDE047';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, orbitR, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = '#EF4444';
+      ctx.beginPath();
+      ctx.arc(cx + orbitR, cy, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      const vEsc = (11.2 * Math.sqrt(massFactor / (orbitR / 30))).toFixed(1);
+      ctx.fillStyle = '#F1F5F9';
+      ctx.font = '11px monospace';
+      ctx.fillText(
+        `r = ${(orbitR / 10).toFixed(1)} R₀ | v_esc = ${vEsc} km/s | ΔV_orbit = 0`,
+        38,
+        25
+      );
+    } else if (activeTopicId === 'chem-1') {
+      // Le Chatelier Dynamic Equilibrium Relaxation Curves ([Reactants] vs [Products])
+      const pressureShift = (paramA - 50) / 100;
+      const rateK = 0.8 + (paramB / 100) * 2.0;
+
+      // Products curve rising to equilibrium plateau
+      ctx.strokeStyle = '#10B981';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      for (let px = 32; px < w - 16; px += 2) {
+        const t = (px - 32) / 75;
+        const eqP = 0.58 + pressureShift * 0.28;
+        const val = eqP * (1 - Math.exp(-rateK * t));
+        const py = h - 26 - val * 115;
+        if (px === 32) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+
+      // Reactants curve decaying to equilibrium plateau
+      ctx.strokeStyle = '#F59E0B';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      for (let px = 32; px < w - 16; px += 2) {
+        const t = (px - 32) / 75;
+        const eqR = 0.42 - pressureShift * 0.22;
+        const val = eqR + (0.95 - eqR) * Math.exp(-rateK * t);
+        const py = h - 26 - val * 115;
+        if (px === 32) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+
+      ctx.fillStyle = '#F1F5F9';
+      ctx.font = '11px monospace';
+      ctx.fillText(
+        `Equilibrium: k_f = ${rateK.toFixed(2)} | Yield Shift = ${(pressureShift * 100).toFixed(0)}%`,
+        38,
+        25
+      );
+    } else if (currentSubject === 'Mathematics') {
+      // Default Math (math-1): Secant-to-Tangent First Principles
       const stepH = Math.max(8, (paramA / 100) * 120);
       const x0 = 55 + (paramB / 100) * 110;
 
@@ -148,7 +444,6 @@ export function StickyNoteDesk() {
         return h - 34 - (norm * norm * 26 + Math.sin(norm) * 14);
       };
 
-      // Plot function f(x)
       ctx.strokeStyle = '#10B981';
       ctx.lineWidth = 2.5;
       ctx.beginPath();
@@ -159,13 +454,11 @@ export function StickyNoteDesk() {
       }
       ctx.stroke();
 
-      // Points P(x0, f(x0)) and Q(x0 + h, f(x0 + h))
       const x1 = Math.min(w - 24, x0 + stepH);
       const y0 = f(x0);
       const y1 = f(x1);
       const slope = (y0 - y1) / Math.max(1, x1 - x0);
 
-      // Secant Chord Line
       ctx.strokeStyle = '#FDE047';
       ctx.lineWidth = 2;
       ctx.setLineDash([5, 4]);
@@ -175,7 +468,6 @@ export function StickyNoteDesk() {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Draw Points P and Q
       ctx.fillStyle = '#EF4444';
       ctx.beginPath();
       ctx.arc(x0, y0, 5, 0, Math.PI * 2);
@@ -186,7 +478,6 @@ export function StickyNoteDesk() {
       ctx.arc(x1, y1, 5, 0, Math.PI * 2);
       ctx.fill();
 
-      // Readout overlay
       ctx.fillStyle = '#F1F5F9';
       ctx.font = '11px monospace';
       ctx.fillText(
@@ -195,7 +486,7 @@ export function StickyNoteDesk() {
         26
       );
     } else if (currentSubject === 'Physics') {
-      // Parabolic Projectile Trajectory: paramA = Angle θ (15°..80°), paramB = Initial Speed v0
+      // Default Physics (phys-1): Parabolic Projectile Trajectory
       const angleDeg = 15 + (paramA / 100) * 65;
       const angleRad = (angleDeg * Math.PI) / 180;
       const v0 = 35 + (paramB / 100) * 45;
@@ -223,7 +514,6 @@ export function StickyNoteDesk() {
       }
       ctx.stroke();
 
-      // Apex Marker
       ctx.fillStyle = '#10B981';
       ctx.beginPath();
       ctx.arc(apexX, apexY, 5, 0, Math.PI * 2);
@@ -243,7 +533,7 @@ export function StickyNoteDesk() {
         26
       );
     } else {
-      // Chemistry: Maxwell-Boltzmann Distribution with Temperature T (paramA) & Catalyst Ea (paramB)
+      // Chemistry (chem-2): Maxwell-Boltzmann Distribution
       const tempFactor = 0.65 + (paramA / 100) * 0.9;
       const eaX = 135 + (paramB / 100) * 130;
 
@@ -258,11 +548,10 @@ export function StickyNoteDesk() {
         const py = h - 26 - prob * 145;
 
         if (x === 32) ctx.moveTo(x, py);
-        else ctx.lineTo(x, py);
+        else ctx.lineTo(px_val(x), py);
       }
       ctx.stroke();
 
-      // Shade reactive molecules beyond Ea
       ctx.fillStyle = 'rgba(16, 185, 129, 0.35)';
       ctx.beginPath();
       ctx.moveTo(eaX, h - 26);
@@ -277,7 +566,6 @@ export function StickyNoteDesk() {
       ctx.closePath();
       ctx.fill();
 
-      // Activation Energy Ea threshold line
       ctx.strokeStyle = '#EF4444';
       ctx.lineWidth = 2;
       ctx.setLineDash([4, 3]);
@@ -295,7 +583,13 @@ export function StickyNoteDesk() {
         26
       );
     }
-  }, [currentSubject, paramA, paramB]);
+
+    ctx.restore();
+  }, [currentSubject, activeTopicId, paramA, paramB]);
+
+  function px_val(x: number) {
+    return x;
+  }
 
   const subjectStickies = stickyNotes.filter(
     (s) => s.subject === currentSubject
@@ -349,19 +643,11 @@ export function StickyNoteDesk() {
     setTimeout(() => setSavedCornellBadge(false), 2500);
   };
 
-  const sliderALabel =
-    currentSubject === 'Mathematics'
-      ? 'Chord Step h (Δx → 0)'
-      : currentSubject === 'Physics'
-        ? 'Launch Angle θ (deg)'
-        : 'Temperature T (Kelvin)';
-
-  const sliderBLabel =
-    currentSubject === 'Mathematics'
-      ? 'Curve Probe Coordinate x₀'
-      : currentSubject === 'Physics'
-        ? 'Initial Velocity v₀ (m/s)'
-        : 'Activation Energy E_a (Catalyst)';
+  const simMeta = TOPIC_SIM_LABELS[activeTopicId] || {
+    title: 'Interactive Code Simulation Studio',
+    sliderA: 'Primary Parameter A',
+    sliderB: 'Secondary Parameter B',
+  };
 
   return (
     <aside
@@ -369,12 +655,12 @@ export function StickyNoteDesk() {
       className="rounded-2xl border-2 border-[#C8AE8D] bg-[#F3E5D0]/85 p-4 flex flex-col justify-between gap-4 h-full min-h-[760px] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.1)]"
     >
       <div className="space-y-4">
-        {/* Panel 1: 3D Tactile Sticky Notes with Paper-Curl 180deg Flip */}
+        {/* Panel 1: 3D Tactile Sticky Notes with Paper-Curl 180deg Flip & SM-2 Spaced Repetition */}
         <div className="space-y-3">
           <div className="flex items-center justify-between border-b border-[#D4B996] pb-2">
             <div>
               <span className="text-[10px] font-mono uppercase tracking-wider text-[#8D6E63] font-bold block">
-                Active Recall Flashcards
+                SM-2 Active Recall Flashcards
               </span>
               <h2 className="text-base font-bold font-serif text-[#1E293B] flex items-center gap-1.5">
                 <StickyNote className="w-4 h-4 text-[#F59E0B]" />
@@ -472,7 +758,6 @@ export function StickyNoteDesk() {
                     <div
                       className={`absolute inset-0 backface-hidden sticky-paper-curl rounded-xl border-2 ${palette.border} ${palette.frontBg} p-3 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.12)] flex flex-col justify-between`}
                     >
-                      {/* Red/Brass Push-Pin */}
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-700/80 flex items-center gap-1">
                           <span
@@ -491,7 +776,10 @@ export function StickyNoteDesk() {
                       </p>
 
                       <div className="text-[10px] font-mono text-slate-600 flex items-center justify-between pt-1 border-t border-black/10">
-                        <span>Click to curl &amp; reveal</span>
+                        <span>
+                          SM-2: {note.intervalDays || 1}d • EF{' '}
+                          {(note.easeFactor || 2.5).toFixed(1)}
+                        </span>
                         <Sparkles className="w-3 h-3 text-amber-700" />
                       </div>
                     </div>
@@ -520,7 +808,7 @@ export function StickyNoteDesk() {
                           onClick={() =>
                             updateStickyMastery(note.id, 'MASTERED')
                           }
-                          title="Mark Mastered"
+                          title="Mark Mastered (Increases SM-2 Interval)"
                           className="flex-1 py-0.5 rounded bg-[#10B981] text-white text-[9px] font-mono font-bold flex items-center justify-center gap-0.5 cursor-pointer"
                         >
                           <CheckCircle2 className="w-2.5 h-2.5" />
@@ -530,7 +818,7 @@ export function StickyNoteDesk() {
                           onClick={() =>
                             updateStickyMastery(note.id, 'SPACED_DUE')
                           }
-                          title="Mark Spaced Due"
+                          title="Schedule Spaced Review (2d)"
                           className="flex-1 py-0.5 rounded bg-[#F59E0B] text-white text-[9px] font-mono font-bold flex items-center justify-center gap-0.5 cursor-pointer"
                         >
                           <Clock className="w-2.5 h-2.5" />
@@ -540,7 +828,7 @@ export function StickyNoteDesk() {
                           onClick={() =>
                             updateStickyMastery(note.id, 'WEAK_POINT')
                           }
-                          title="Flag Weak Point"
+                          title="Flag Weak Point (1d Reset)"
                           className="flex-1 py-0.5 rounded bg-[#EF4444] text-white text-[9px] font-mono font-bold flex items-center justify-center gap-0.5 cursor-pointer"
                         >
                           <AlertTriangle className="w-2.5 h-2.5" />
@@ -555,17 +843,17 @@ export function StickyNoteDesk() {
           </div>
         </div>
 
-        {/* Panel 2: Interactive Code-Rendered STEM Simulation Sandbox */}
+        {/* Panel 2: Topic-Specific Interactive Code-Rendered STEM Simulation Sandbox */}
         <div className="rounded-xl bg-[#FDFBF7] border-2 border-[#B89972] p-3.5 shadow-md space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <Sliders className="w-4 h-4 text-[#B45309]" />
-              <h3 className="text-xs sm:text-sm font-bold font-serif text-[#1E293B]">
-                Interactive Code Simulation Studio
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Sliders className="w-4 h-4 text-[#B45309] shrink-0" />
+              <h3 className="text-xs sm:text-sm font-bold font-serif text-[#1E293B] truncate">
+                {simMeta.title}
               </h3>
             </div>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#1A2E26] text-[#10B981] font-semibold">
-              Live 60fps Canvas
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#1A2E26] text-[#10B981] font-semibold shrink-0">
+              Retina Canvas
             </span>
           </div>
 
@@ -580,7 +868,7 @@ export function StickyNoteDesk() {
           <div className="space-y-2 pt-1">
             <div>
               <div className="flex items-center justify-between text-[11px] font-mono font-semibold text-[#5D4037] mb-0.5">
-                <span>{sliderALabel}</span>
+                <span>{simMeta.sliderA}</span>
                 <span>{paramA}%</span>
               </div>
               <input
@@ -596,7 +884,7 @@ export function StickyNoteDesk() {
 
             <div>
               <div className="flex items-center justify-between text-[11px] font-mono font-semibold text-[#5D4037] mb-0.5">
-                <span>{sliderBLabel}</span>
+                <span>{simMeta.sliderB}</span>
                 <span>{paramB}%</span>
               </div>
               <input
