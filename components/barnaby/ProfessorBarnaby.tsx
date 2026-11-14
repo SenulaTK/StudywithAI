@@ -24,7 +24,7 @@ interface ProfessorBarnabyProps {
   speechText: string;
   socraticQuestion: string;
   bloomsLevel?: BloomsLevel;
-  keyUsed?: 'KEY_1' | 'KEY_2' | 'KEY_3' | null;
+  keyUsed?: 'KEY_1' | 'KEY_2' | 'KEY_3' | 'LOCAL_WEBGPU' | null;
   isStreamingTrigger?: number;
 }
 
@@ -42,7 +42,13 @@ export function ProfessorBarnaby({
   keyUsed = null,
   isStreamingTrigger = 0,
 }: ProfessorBarnabyProps) {
-  const { activeCallState, audioMuted, geminiHasKey } = useStudyDeskStore();
+  const {
+    activeCallState,
+    audioMuted,
+    geminiHasKey,
+    aiEngineMode,
+    localModelStatus,
+  } = useStudyDeskStore();
   const [manualCostume, setManualCostume] = useState<BarnabyCostume | null>(
     null
   );
@@ -144,6 +150,18 @@ export function ProfessorBarnaby({
             >
               <ShieldCheck className="w-3.5 h-3.5 text-[#10B981]" />
               {keyUsed}
+            </span>
+          ) : aiEngineMode === 'local-webgpu' ? (
+            <span
+              className="text-xs font-mono px-2 py-1 rounded-lg border flex items-center gap-1 bg-[#FDFBF7] text-[#065F46] border-[#10B981]/40"
+              title="In-Browser Local WebGPU Model"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-[#10B981]" />
+              {localModelStatus === 'loading'
+                ? 'Loading WebGPU...'
+                : localModelStatus === 'ready'
+                  ? 'Local WebGPU Ready'
+                  : 'Local WebGPU'}
             </span>
           ) : (
             <span

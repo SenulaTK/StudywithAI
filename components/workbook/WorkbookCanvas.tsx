@@ -31,6 +31,7 @@ import {
   type BloomsLevel,
   type TutorMode,
 } from '@/lib/gemini';
+import { askBarnabyLocal } from '@/lib/localModel';
 import { chiptuneAudio } from '@/lib/audio';
 import { ProfessorBarnaby } from '@/components/barnaby/ProfessorBarnaby';
 import { PersonaMenuStage } from '@/components/transitions/PersonaSchoolTransition';
@@ -85,6 +86,11 @@ export function WorkbookCanvas() {
     tutorMode,
     workbookTab,
     geminiHasKey,
+    aiEngineMode,
+    localModelId,
+    localModelStatus,
+    localModelProgress,
+    localModelProgressText,
     backpackFiles,
     workbookDialogues,
     quizCompletedIds,
@@ -93,6 +99,8 @@ export function WorkbookCanvas() {
     setWorkbookTab,
     setActiveCallState,
     setGeminiHasKey,
+    setAiEngineMode,
+    setLocalModelState,
     updateTopicFormula,
     addTopicHint,
     removeTopicHint,
@@ -149,7 +157,7 @@ export function WorkbookCanvas() {
     latexFormula?: string;
     latexCaption?: string;
     hintSteps?: string[];
-    keyUsed: 'KEY_1' | 'KEY_2' | 'KEY_3';
+    keyUsed: 'KEY_1' | 'KEY_2' | 'KEY_3' | 'LOCAL_WEBGPU';
     trigger: number;
   } | null>(null);
 
@@ -230,11 +238,11 @@ export function WorkbookCanvas() {
     const queryText = studentInput.trim();
     if (!queryText || isLoading || !activeNode) return;
 
-    if (geminiHasKey === false) {
+    if (aiEngineMode === 'gemini' && geminiHasKey === false) {
       setApiError({
         code: 'NO_API_KEY',
         message:
-          'Connect a Gemini API key above (or in Desk Locker) before sending questions to Professor Barnaby.',
+          'Connect a Gemini API key above (or switch to Local WebGPU) before sending questions to Professor Barnaby.',
       });
       return;
     }
@@ -247,7 +255,7 @@ export function WorkbookCanvas() {
         .filter((f) => f.subject === currentSubject)
         .flatMap((f) => f.chunks);
 
-      const response = await geminiRotator.askBarnaby({
+      const askPayload = {
         userMessage: queryText,
         subject: currentSubject,
         topicTitle: activeNode.title,
@@ -255,10 +263,25 @@ export function WorkbookCanvas() {
         mode: tutorMode,
         ragContext: ragChunks,
         conversationHistory: topicHistory.map((t) => ({
-          role: t.role === 'student' ? 'user' : 'barnaby',
+          role: t.role === 'student' ? ('user' as const) : ('barnaby' as const),
           text: t.text,
         })),
-      });
+      };
+
+      const response =
+        aiEngineMode === 'local-webgpu'
+          ? await askBarnabyLocal(askPayload, localModelId, (report) => {
+              setLocalModelState({
+                status: report.progress >= 100 ? 'ready' : 'loading',
+                progress: report.progress,
+                text: report.text,
+              });
+            })
+          : await geminiRotator.askBarnaby(askPayload);
+
+      if (aiEngineMode === 'local-webgpu') {
+        setLocalModelState({ status: 'ready', progress: 100, text: 'Ready' });
+      }
 
       const userSeq = nextWorkbookSeq();
       appendDialogueTurn(activeNode.id, {
@@ -305,7 +328,9 @@ export function WorkbookCanvas() {
       });
 
       setStudentInput('');
-      setGeminiHasKey(true);
+      if (aiEngineMode === 'gemini') {
+        setGeminiHasKey(true);
+      }
       awardXP(30);
     } catch (err) {
       if (err instanceof GeminiConfigError) {
@@ -536,45 +561,75 @@ export function WorkbookCanvas() {
           isStreamingTrigger={latestBarnabySpeech?.trigger || 0}
         />
 
-        {/* Inline Gemini API Key Setup Card (only shown when actively studying a topic or on NO_API_KEY error) */}
-        {((Boolean(activeNode) && geminiHasKey === false) ||
-          apiError?.code === 'NO_API_KEY') && (
-          <form
-            onSubmit={handleSaveQuickKey}
-            className="rounded-xl bg-[#FEF08A]/85 border-2 border-[#1E293B] p-3.5 school-stamp-card space-y-2.5"
-          >
-            <div className="flex items-start gap-2">
-              <KeyRound className="w-4 h-4 text-[#1E293B] shrink-0 mt-0.5" />
-              <div className="text-xs text-[#1E293B]">
-                <span className="font-bold block">
-                  Gemini API Key Required for Live AI Tutoring
-                </span>
-                <span className="text-slate-800">
-                  Simulated fallback replies are disabled in production. Paste a
-                  Google Gemini API key below (or configure{' '}
-                  <code className="font-mono font-bold">GEMINI_KEY_1</code> in
-                  Vercel).
-                </span>
+        {/* Inline Gemini API Key Setup Card (only shown in Gemini cloud mode when key is missing) */}
+        {aiEngineMode === 'gemini' &&
+          ((Boolean(activeNode) && geminiHasKey === false) ||
+            apiError?.code === 'NO_API_KEY') && (
+            <form
+              onSubmit={handleSaveQuickKey}
+              className="rounded-xl bg-[#FEF08A]/85 border-2 border-[#1E293B] p-3.5 school-stamp-card space-y-2.5"
+            >
+              <div className="flex items-start gap-2">
+                <KeyRound className="w-4 h-4 text-[#1E293B] shrink-0 mt-0.5" />
+                <div className="text-xs text-[#1E293B]">
+                  <span className="font-bold block">
+                    Gemini API Key Required for Cloud AI Tutoring
+                  </span>
+                  <span className="text-slate-800">
+                    Paste a Google Gemini API key below, or switch to the free
+                    in-browser Local WebGPU model (zero server cost).
+                  </span>
+                </div>
               </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  id="inline-gemini-key-input"
+                  type="password"
+                  placeholder="AIzaSy... (stored cleanly in your browser)"
+                  value={quickKeyInput}
+                  onChange={(e) => setQuickKeyInput(e.target.value)}
+                  className="flex-1 min-w-[180px] px-3 py-1.5 rounded-lg bg-white border border-[#1E293B] text-xs font-mono focus:outline-none"
+                />
+                <button
+                  id="inline-gemini-key-save-btn"
+                  type="submit"
+                  className="px-3.5 py-1.5 rounded-lg bg-[#1A2E26] hover:bg-[#243F35] text-[#FDFBF7] text-xs font-bold cursor-pointer shrink-0"
+                >
+                  Save &amp; Connect
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAiEngineMode('local-webgpu');
+                    setApiError(null);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-[#FDFBF7] hover:bg-[#F5EBE0] text-[#1E293B] border border-[#1E293B] text-xs font-bold cursor-pointer shrink-0"
+                >
+                  Use Free Local WebGPU
+                </button>
+              </div>
+            </form>
+          )}
+
+        {/* In-Browser WebGPU Model Download / Compile Progress */}
+        {aiEngineMode === 'local-webgpu' && localModelStatus === 'loading' && (
+          <div className="rounded-xl bg-[#ECFDF5] border-2 border-[#10B981] p-3 space-y-1.5 text-xs text-[#065F46]">
+            <div className="flex items-center justify-between font-bold">
+              <span>Loading In-Browser WebGPU Model...</span>
+              <span className="font-mono">{localModelProgress}%</span>
             </div>
-            <div className="flex items-center gap-2">
-              <input
-                id="inline-gemini-key-input"
-                type="password"
-                placeholder="AIzaSy... (stored cleanly in your browser)"
-                value={quickKeyInput}
-                onChange={(e) => setQuickKeyInput(e.target.value)}
-                className="flex-1 px-3 py-1.5 rounded-lg bg-white border border-[#1E293B] text-xs font-mono focus:outline-none"
+            <div className="w-full h-2 rounded-full bg-[#D1FAE5] overflow-hidden">
+              <div
+                className="h-full bg-[#10B981] transition-all duration-200"
+                style={{ width: `${localModelProgress}%` }}
               />
-              <button
-                id="inline-gemini-key-save-btn"
-                type="submit"
-                className="px-3.5 py-1.5 rounded-lg bg-[#1A2E26] hover:bg-[#243F35] text-[#FDFBF7] text-xs font-bold cursor-pointer shrink-0"
-              >
-                Save &amp; Connect
-              </button>
             </div>
-          </form>
+            {localModelProgressText && (
+              <p className="text-[11px] text-[#047857] truncate">
+                {localModelProgressText}
+              </p>
+            )}
+          </div>
         )}
 
         {/* Real API Error Alert (Non-Key Failures) */}

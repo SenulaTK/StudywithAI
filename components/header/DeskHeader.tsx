@@ -31,6 +31,12 @@ import {
 } from '@/lib/store';
 import { chiptuneAudio } from '@/lib/audio';
 import { geminiRotator, type KeySlotStatus } from '@/lib/gemini';
+import {
+  LOCAL_MODEL_OPTIONS,
+  isWebGPUSupported,
+  loadLocalModel,
+  unloadLocalModel,
+} from '@/lib/localModel';
 import { storageAdapter } from '@/lib/storage';
 import { PersonaMenuStage } from '@/components/transitions/PersonaSchoolTransition';
 
@@ -58,6 +64,11 @@ export function DeskHeader() {
     cameraPan,
     audioMuted,
     geminiHasKey,
+    aiEngineMode,
+    localModelId,
+    localModelStatus,
+    localModelProgress,
+    localModelProgressText,
     stickyNotes,
     backpackFiles,
     cornellNotes,
@@ -69,6 +80,9 @@ export function DeskHeader() {
     setSubject,
     setActiveCallState,
     setGeminiHasKey,
+    setAiEngineMode,
+    setLocalModelId,
+    setLocalModelState,
     panToLeft,
     panToCenter,
     panToRight,
@@ -759,6 +773,137 @@ export function DeskHeader() {
               <PersonaMenuStage stageKey={vaultTab}>
                 {vaultTab === 'keys' && (
                   <div className="space-y-3.5">
+                    {/* AI Engine Mode Switcher */}
+                    <div className="p-3 rounded-xl bg-[#FDFBF7] border-2 border-[#1E293B] space-y-2.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <div className="text-xs font-bold text-[#1E293B]">
+                            AI Engine Mode
+                          </div>
+                          <div className="text-[11px] text-slate-600">
+                            Choose Cloud Gemini 3.8 Flash or zero-cost In-Browser
+                            WebGPU.
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 bg-[#F5EBE0] p-1 rounded-lg border border-[#D4B996]">
+                          <button
+                            type="button"
+                            onClick={() => setAiEngineMode('gemini')}
+                            className={`px-2.5 py-1 rounded-md text-xs font-bold cursor-pointer transition-colors ${
+                              aiEngineMode === 'gemini'
+                                ? 'bg-[#1A2E26] text-[#FDE047]'
+                                : 'text-slate-700 hover:text-[#1E293B]'
+                            }`}
+                          >
+                            Gemini 3.8 Flash
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAiEngineMode('local-webgpu')}
+                            className={`px-2.5 py-1 rounded-md text-xs font-bold cursor-pointer transition-colors ${
+                              aiEngineMode === 'local-webgpu'
+                                ? 'bg-[#1A2E26] text-[#FDE047]'
+                                : 'text-slate-700 hover:text-[#1E293B]'
+                            }`}
+                          >
+                            Local WebGPU (Free)
+                          </button>
+                        </div>
+                      </div>
+
+                      {aiEngineMode === 'local-webgpu' && (
+                        <div className="pt-2 border-t border-[#E6D5B8] space-y-2">
+                          {!isWebGPUSupported() && (
+                            <div className="text-xs text-[#991B1B] bg-[#FEE2E2] border border-[#FCA5A5] rounded-lg px-2.5 py-1.5">
+                              WebGPU is not detected in this browser. Try Chrome,
+                              Edge, or Safari 18+ on a WebGPU-capable device.
+                            </div>
+                          )}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <select
+                              value={localModelId}
+                              onChange={(e) => setLocalModelId(e.target.value)}
+                              className="flex-1 min-w-[200px] px-2.5 py-1.5 rounded-lg bg-white border border-[#C8AE8D] text-xs font-medium text-[#1E293B]"
+                            >
+                              {LOCAL_MODEL_OPTIONS.map((opt) => (
+                                <option key={opt.id} value={opt.id}>
+                                  {opt.label} ({opt.sizeLabel})
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              disabled={localModelStatus === 'loading'}
+                              onClick={async () => {
+                                setLocalModelState({
+                                  status: 'loading',
+                                  progress: 0,
+                                  text: 'Starting WebGPU download...',
+                                });
+                                try {
+                                  await loadLocalModel(
+                                    localModelId,
+                                    (report) => {
+                                      setLocalModelState({
+                                        status:
+                                          report.progress >= 100
+                                            ? 'ready'
+                                            : 'loading',
+                                        progress: report.progress,
+                                        text: report.text,
+                                      });
+                                    }
+                                  );
+                                  setLocalModelState({
+                                    status: 'ready',
+                                    progress: 100,
+                                    text: 'Model ready in browser!',
+                                  });
+                                } catch (err) {
+                                  setLocalModelState({
+                                    status: 'error',
+                                    progress: 0,
+                                    text:
+                                      err instanceof Error
+                                        ? err.message
+                                        : 'Failed to load WebGPU model.',
+                                  });
+                                }
+                              }}
+                              className="px-3 py-1.5 rounded-lg bg-[#10B981] hover:bg-[#059669] disabled:opacity-50 text-white text-xs font-bold cursor-pointer"
+                            >
+                              {localModelStatus === 'loading'
+                                ? `Loading ${localModelProgress}%`
+                                : localModelStatus === 'ready'
+                                  ? 'Reload Model'
+                                  : 'Download & Load'}
+                            </button>
+                            {localModelStatus === 'ready' && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  await unloadLocalModel();
+                                  setLocalModelState({
+                                    status: 'idle',
+                                    progress: 0,
+                                    text: '',
+                                  });
+                                }}
+                                className="px-2.5 py-1.5 rounded-lg bg-[#F5EBE0] hover:bg-[#E6D5B8] text-[#1E293B] text-xs font-bold cursor-pointer"
+                              >
+                                Unload
+                              </button>
+                            )}
+                          </div>
+                          {localModelProgressText && (
+                            <div className="text-[11px] text-slate-600 truncate">
+                              {localModelProgressText}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                       {keySlots.map((slot, idx) => (
                         <div

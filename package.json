@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@google/genai": "^3.0.0",
+    "@mlc-ai/web-llm": "^0.2.88",
     "@tailwindcss/typography": "^0.5.20",
     "dexie": "^4.4.7",
     "framer-motion": "^14.10.1",

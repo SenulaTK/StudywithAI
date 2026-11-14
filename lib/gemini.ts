@@ -29,7 +29,7 @@ export interface BarnabyResponse {
   latexFormula?: string;
   latexCaption?: string;
   hintSteps?: string[];
-  keyUsed: 'KEY_1' | 'KEY_2' | 'KEY_3';
+  keyUsed: 'KEY_1' | 'KEY_2' | 'KEY_3' | 'LOCAL_WEBGPU';
   retriesAttempted: number;
 }
 

@@ -92,6 +92,11 @@ interface StudyDeskStore {
   tutorMode: 'socratic' | 'feynman' | 'exam';
   audioMuted: boolean;
   geminiHasKey: boolean | null;
+  aiEngineMode: 'gemini' | 'local-webgpu';
+  localModelId: string;
+  localModelStatus: 'idle' | 'loading' | 'ready' | 'unsupported' | 'error';
+  localModelProgress: number;
+  localModelProgressText: string;
   transitionBanner: TransitionBannerState | null;
   stickyNotes: StoredStickyNote[];
   backpackFiles: StoredBackpackFile[];
@@ -102,6 +107,13 @@ interface StudyDeskStore {
 
   // Actions
   setGeminiHasKey: (ready: boolean) => void;
+  setAiEngineMode: (mode: 'gemini' | 'local-webgpu') => void;
+  setLocalModelId: (modelId: string) => void;
+  setLocalModelState: (patch: {
+    status?: 'idle' | 'loading' | 'ready' | 'unsupported' | 'error';
+    progress?: number;
+    text?: string;
+  }) => void;
   createNotebook: (name: string, board?: SyllabusBoard) => void;
   deleteNotebook: (name: string) => void;
   setSubject: (subject: SubjectName) => void;
@@ -198,6 +210,11 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
   tutorMode: 'socratic',
   audioMuted: false,
   geminiHasKey: null,
+  aiEngineMode: 'gemini',
+  localModelId: 'Llama-3.2-1B-Instruct-q4f16_1-MLC',
+  localModelStatus: 'idle',
+  localModelProgress: 0,
+  localModelProgressText: '',
   transitionBanner: null,
   stickyNotes: [],
   backpackFiles: [],
@@ -207,6 +224,14 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
   selectedAnswers: {},
 
   setGeminiHasKey: (ready) => set({ geminiHasKey: ready }),
+  setAiEngineMode: (mode) => set({ aiEngineMode: mode }),
+  setLocalModelId: (modelId) => set({ localModelId: modelId }),
+  setLocalModelState: (patch) =>
+    set((state) => ({
+      localModelStatus: patch.status ?? state.localModelStatus,
+      localModelProgress: patch.progress ?? state.localModelProgress,
+      localModelProgressText: patch.text ?? state.localModelProgressText,
+    })),
 
   triggerTransition: (kicker, title, theme) =>
     set({
