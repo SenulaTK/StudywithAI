@@ -1,17 +1,29 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, MotionConfig } from 'framer-motion';
+import { ArrowLeft } from 'lucide-react';
 import { DeskHeader } from '@/components/header/DeskHeader';
 import { ChalkboardRoadmap } from '@/components/roadmap/ChalkboardRoadmap';
 import { WorkbookCanvas } from '@/components/workbook/WorkbookCanvas';
 import { StickyNoteDesk } from '@/components/studio/StickyNoteDesk';
 import {
+  PersonaSchoolCurtain,
+  PersonaMenuStage,
+} from '@/components/transitions/PersonaSchoolTransition';
+import {
   useStudyDeskStore,
   type SubjectName,
   type SyllabusBoard,
 } from '@/lib/store';
+import { chiptuneAudio } from '@/lib/audio';
 import { storageAdapter } from '@/lib/storage';
+
+const STATION_NAMES = {
+  left: 'Chalkboard Roadmap',
+  center: 'Open Workbook & Professor Barnaby',
+  right: 'Practice & STEM Lab Studio',
+} as const;
 
 export default function StudyDeskPage() {
   const {
@@ -23,6 +35,7 @@ export default function StudyDeskPage() {
     roadmapState,
     stickyNotes,
     backpackFiles,
+    panToOverview,
     hydrateFromArchive,
   } = useStudyDeskStore();
 
@@ -116,62 +129,92 @@ export default function StudyDeskPage() {
   }, [isHydrated, userXP, streakCount, currentSubject, syllabusBoard, roadmapState]);
 
   return (
-    <div className="min-h-screen flex flex-col justify-between desk-wood-surface selection:bg-[#FDE047]">
-      {/* Top Tactile Desk Header */}
-      <DeskHeader />
+    <MotionConfig reducedMotion="user">
+      <div className="min-h-screen flex flex-col justify-between desk-wood-surface selection:bg-[#FDE047]">
+        {/* Persona-Style Full-Screen Diagonal School Cut-In Curtain */}
+        <PersonaSchoolCurtain />
 
-      {/* Master 3-Panel Spatial Desk Workspace with Framer Motion Camera Panning */}
-      <main className="flex-1 w-full max-w-[1800px] mx-auto px-3 sm:px-5 py-4 overflow-x-hidden">
-        {cameraPan === 'overview' ? (
-          <motion.div
-            key="overview-grid"
-            initial={{ opacity: 0.85, scale: 0.99 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.3, ease: 'easeOut' }}
-            className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch"
-          >
-            {/* LEFT PANEL (3 cols): Chalkboard Scheme of Work Roadmap */}
-            <motion.div
-              whileHover={{ y: -2 }}
-              transition={{ type: 'spring', stiffness: 260, damping: 24 }}
-              className="lg:col-span-3"
-            >
-              <ChalkboardRoadmap />
-            </motion.div>
+        {/* Top Tactile Desk Header */}
+        <DeskHeader />
 
-            {/* MIDDLE PANEL (5 cols): Open Workbook Canvas + Professor Barnaby */}
-            <motion.div
-              whileHover={{ y: -2 }}
-              transition={{ type: 'spring', stiffness: 260, damping: 24 }}
-              className="lg:col-span-5"
-            >
-              <WorkbookCanvas />
-            </motion.div>
+        {/* Master 3-Panel Spatial Desk Workspace with Dramatic Persona Stage Transitions */}
+        <main className="flex-1 w-full max-w-[1800px] mx-auto px-3 sm:px-5 py-4 overflow-x-clip">
+          <PersonaMenuStage stageKey={cameraPan}>
+            {cameraPan === 'overview' ? (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+                {/* LEFT PANEL (3 cols): Chalkboard Scheme of Work Roadmap */}
+                <motion.div
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{
+                    duration: 0.28,
+                    delay: 0.04,
+                    ease: [0.22, 1, 0.36, 1],
+                  }}
+                  className="lg:col-span-3"
+                >
+                  <ChalkboardRoadmap />
+                </motion.div>
 
-            {/* RIGHT PANEL (4 cols): 3D Sticky Note Desk & Simulation Studio */}
-            <motion.div
-              whileHover={{ y: -2 }}
-              transition={{ type: 'spring', stiffness: 260, damping: 24 }}
-              className="lg:col-span-4"
-            >
-              <StickyNoteDesk />
-            </motion.div>
-          </motion.div>
-        ) : (
-          /* Focused Spatial Camera Pan View (panToLeft / panToCenter / panToRight) */
-          <motion.div
-            key={`focused-${cameraPan}`}
-            initial={{ opacity: 0, y: 12, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ duration: 0.32, ease: 'easeOut' }}
-            className="max-w-4xl mx-auto"
-          >
-            {cameraPan === 'left' && <ChalkboardRoadmap />}
-            {cameraPan === 'center' && <WorkbookCanvas />}
-            {cameraPan === 'right' && <StickyNoteDesk />}
-          </motion.div>
-        )}
-      </main>
-    </div>
+                {/* MIDDLE PANEL (5 cols): Open Workbook Canvas + Professor Barnaby */}
+                <motion.div
+                  initial={{ opacity: 0, y: 18 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{
+                    duration: 0.3,
+                    delay: 0.1,
+                    ease: [0.22, 1, 0.36, 1],
+                  }}
+                  className="lg:col-span-5"
+                >
+                  <WorkbookCanvas />
+                </motion.div>
+
+                {/* RIGHT PANEL (4 cols): 3D Sticky Note Desk & Simulation Studio */}
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{
+                    duration: 0.3,
+                    delay: 0.15,
+                    ease: [0.22, 1, 0.36, 1],
+                  }}
+                  className="lg:col-span-4"
+                >
+                  <StickyNoteDesk />
+                </motion.div>
+              </div>
+            ) : (
+              /* Focused Station View (Chalkboard / Workbook / 3D Studio) */
+              <div className="max-w-5xl mx-auto space-y-3">
+                <div className="flex items-center justify-between px-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      chiptuneAudio.playMenuSlash();
+                      panToOverview();
+                    }}
+                    className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-[#FDFBF7] hover:bg-[#FDE047] border-2 border-[#1E293B] text-xs font-bold text-[#1E293B] -skew-x-6 shadow-[3px_3px_0px_#1E293B] transition-colors cursor-pointer"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5 skew-x-6" />
+                    <span className="skew-x-6">Back to 3-Panel Desk</span>
+                  </button>
+
+                  <span className="px-3 py-1 rounded-lg bg-[#1A2E26] text-[#FDE047] text-xs font-mono font-bold -skew-x-6">
+                    <span className="inline-block skew-x-6">
+                      Focused: {STATION_NAMES[cameraPan]}
+                    </span>
+                  </span>
+                </div>
+
+                {cameraPan === 'left' && <ChalkboardRoadmap />}
+                {cameraPan === 'center' && <WorkbookCanvas />}
+                {cameraPan === 'right' && <StickyNoteDesk />}
+              </div>
+            )}
+          </PersonaMenuStage>
+        </main>
+      </div>
+    </MotionConfig>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { motion } from 'framer-motion';
 import {
   StickyNote,
   RotateCw,
@@ -13,9 +14,10 @@ import {
   Sparkles,
   Save,
 } from 'lucide-react';
-import { useStudyDeskStore } from '@/lib/store';
+import { useStudyDeskStore, type StudioTab } from '@/lib/store';
 import { chiptuneAudio } from '@/lib/audio';
 import { storageAdapter, type StoredStickyNote } from '@/lib/storage';
+import { PersonaMenuStage } from '@/components/transitions/PersonaSchoolTransition';
 
 const STICKY_COLORS: Record<
   StoredStickyNote['color'],
@@ -98,54 +100,26 @@ const TOPIC_SIM_LABELS: Record<
   },
 };
 
-export function StickyNoteDesk() {
-  const {
-    currentSubject,
-    activeTopicId,
-    stickyNotes,
-    cornellNotes,
-    addStickyNote,
-    updateStickyMastery,
-    saveCornellForTopic,
-    awardXP,
-  } = useStudyDeskStore();
+const DEFAULT_CORNELL_CUES =
+  '• Core Governing Law?\n• Boundary Condition?\n• Examiner Trap?';
+const DEFAULT_CORNELL_NOTES =
+  '1. Always state standard syllabus equation before substituting values.\n2. Verify dimensional consistency and SI prefixes.\n3. Connect graphical slope to physical rate of change.';
+const DEFAULT_CORNELL_SUMMARY =
+  'One-sentence synthesis linking the mathematical derivative/integral to the real physical system.';
 
-  const [flippedIds, setFlippedIds] = useState<Record<string, boolean>>({});
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [newFront, setNewFront] = useState('');
-  const [newBack, setNewBack] = useState('');
-  const [newColor, setNewColor] =
-    useState<StoredStickyNote['color']>('yellow');
-
+function StemSimulationSandbox({
+  currentSubject,
+  activeTopicId,
+  simMeta,
+}: {
+  currentSubject: string;
+  activeTopicId: string;
+  simMeta: { title: string; sliderA: string; sliderB: string };
+}) {
   // Interactive STEM Simulation Brass/Wood Sliders State
   const [paramA, setParamA] = useState(45);
   const [paramB, setParamB] = useState(60);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  // Cornell Notes State
-  const existingCornell = cornellNotes[activeTopicId];
-  const [cuesText, setCuesText] = useState(
-    existingCornell?.cues ||
-      '• Core Governing Law?\n• Boundary Condition?\n• Examiner Trap?'
-  );
-  const [notesText, setNotesText] = useState(
-    existingCornell?.notes ||
-      '1. Always state standard syllabus equation before substituting values.\n2. Verify dimensional consistency and SI prefixes.\n3. Connect graphical slope to physical rate of change.'
-  );
-  const [summaryText, setSummaryText] = useState(
-    existingCornell?.summary ||
-      'One-sentence synthesis linking the mathematical derivative/integral to the real physical system.'
-  );
-  const [savedCornellBadge, setSavedCornellBadge] = useState(false);
-
-  useEffect(() => {
-    const c = cornellNotes[activeTopicId];
-    if (c) {
-      setCuesText(c.cues);
-      setNotesText(c.notes);
-      setSummaryText(c.summary);
-    }
-  }, [activeTopicId, cornellNotes]);
 
   // Topic-Aware High-DPI HTML5 Canvas STEM Simulation Renderer
   useEffect(() => {
@@ -548,7 +522,7 @@ export function StickyNoteDesk() {
         const py = h - 26 - prob * 145;
 
         if (x === 32) ctx.moveTo(x, py);
-        else ctx.lineTo(px_val(x), py);
+        else ctx.lineTo(x, py);
       }
       ctx.stroke();
 
@@ -587,9 +561,120 @@ export function StickyNoteDesk() {
     ctx.restore();
   }, [currentSubject, activeTopicId, paramA, paramB]);
 
-  function px_val(x: number) {
-    return x;
-  }
+  return (
+    <div className="rounded-xl bg-[#FDFBF7] border-2 border-[#1E293B] p-4 school-stamp-card space-y-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <Sliders className="w-4 h-4 text-[#B45309] shrink-0" />
+          <h3 className="text-sm font-bold font-serif text-[#1E293B] truncate">
+            {simMeta.title}
+          </h3>
+        </div>
+        <span className="text-xs font-mono px-2.5 py-0.5 rounded bg-[#1A2E26] text-[#10B981] font-bold shrink-0">
+          Interactive Canvas
+        </span>
+      </div>
+
+      <canvas
+        ref={canvasRef}
+        width={360}
+        height={175}
+        className="w-full h-52 rounded-xl border-2 border-[#3E2723] shadow-inner bg-[#14241E]"
+      />
+
+      {/* Tactile Brass & Wooden Parameter Sliders */}
+      <div className="space-y-3 pt-1">
+        <div>
+          <div className="flex items-center justify-between text-xs font-mono font-bold text-[#5D4037] mb-1">
+            <span>{simMeta.sliderA}</span>
+            <span>{paramA}%</span>
+          </div>
+          <input
+            id="sim-brass-slider-a"
+            type="range"
+            min={5}
+            max={95}
+            value={paramA}
+            onChange={(e) => setParamA(Number(e.target.value))}
+            className="w-full h-2.5 rounded-lg appearance-none bg-gradient-to-r from-[#D4B996] via-[#B45309] to-[#8D6E63] accent-[#5D4037] cursor-pointer"
+          />
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between text-xs font-mono font-bold text-[#5D4037] mb-1">
+            <span>{simMeta.sliderB}</span>
+            <span>{paramB}%</span>
+          </div>
+          <input
+            id="sim-wooden-slider-b"
+            type="range"
+            min={5}
+            max={95}
+            value={paramB}
+            onChange={(e) => setParamB(Number(e.target.value))}
+            className="w-full h-2.5 rounded-lg appearance-none bg-gradient-to-r from-[#D4B996] via-[#10B981] to-[#1A2E26] accent-[#1A2E26] cursor-pointer"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function StickyNoteDesk() {
+  const {
+    currentSubject,
+    activeTopicId,
+    studioTab,
+    stickyNotes,
+    cornellNotes,
+    setStudioTab,
+    addStickyNote,
+    updateStickyMastery,
+    saveCornellForTopic,
+    awardXP,
+  } = useStudyDeskStore();
+
+  const [flippedIds, setFlippedIds] = useState<Record<string, boolean>>({});
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newFront, setNewFront] = useState('');
+  const [newBack, setNewBack] = useState('');
+  const [newColor, setNewColor] =
+    useState<StoredStickyNote['color']>('yellow');
+
+  // Cornell Notes State (per-topic unsaved drafts fall back cleanly to persisted notes)
+  const [cornellDrafts, setCornellDrafts] = useState<
+    Record<string, { cues: string; notes: string; summary: string }>
+  >({});
+  const [savedCornellBadge, setSavedCornellBadge] = useState(false);
+
+  const storedCornell = cornellNotes[activeTopicId];
+  const activeDraft = cornellDrafts[activeTopicId];
+  const cuesText =
+    activeDraft?.cues ?? storedCornell?.cues ?? DEFAULT_CORNELL_CUES;
+  const notesText =
+    activeDraft?.notes ?? storedCornell?.notes ?? DEFAULT_CORNELL_NOTES;
+  const summaryText =
+    activeDraft?.summary ?? storedCornell?.summary ?? DEFAULT_CORNELL_SUMMARY;
+
+  const updateCornellDraft = (
+    field: 'cues' | 'notes' | 'summary',
+    value: string
+  ) => {
+    setCornellDrafts((prev) => {
+      const current = prev[activeTopicId] ?? {
+        cues: storedCornell?.cues ?? DEFAULT_CORNELL_CUES,
+        notes: storedCornell?.notes ?? DEFAULT_CORNELL_NOTES,
+        summary: storedCornell?.summary ?? DEFAULT_CORNELL_SUMMARY,
+      };
+      return {
+        ...prev,
+        [activeTopicId]: {
+          ...current,
+          [field]: value,
+        },
+      };
+    });
+  };
 
   const subjectStickies = stickyNotes.filter(
     (s) => s.subject === currentSubject
@@ -628,6 +713,12 @@ export function StickyNoteDesk() {
 
   const handleSaveCornell = async () => {
     saveCornellForTopic(activeTopicId, cuesText, notesText, summaryText);
+    setCornellDrafts((prev) => {
+      if (!(activeTopicId in prev)) return prev;
+      const next = { ...prev };
+      delete next[activeTopicId];
+      return next;
+    });
     await storageAdapter.saveCornellNote({
       id: `cornell-${activeTopicId}`,
       subject: currentSubject,
@@ -643,323 +734,394 @@ export function StickyNoteDesk() {
     setTimeout(() => setSavedCornellBadge(false), 2500);
   };
 
+  const handleSwitchStudioTab = (tab: StudioTab) => {
+    if (tab === studioTab) return;
+    chiptuneAudio.playMenuSlash();
+    setStudioTab(tab);
+  };
+
   const simMeta = TOPIC_SIM_LABELS[activeTopicId] || {
-    title: 'Interactive Code Simulation Studio',
+    title: 'Interactive Simulation Studio',
     sliderA: 'Primary Parameter A',
     sliderB: 'Secondary Parameter B',
   };
 
+  const STUDIO_TABS: Array<{
+    id: StudioTab;
+    label: string;
+    badge?: string;
+    icon: React.ComponentType<{ className?: string }>;
+  }> = [
+    {
+      id: 'stickies',
+      label: '3D Cards',
+      badge: String(subjectStickies.length),
+      icon: StickyNote,
+    },
+    {
+      id: 'simulation',
+      label: 'STEM Lab',
+      icon: Sliders,
+    },
+    {
+      id: 'cornell',
+      label: 'Cornell Notes',
+      icon: BookMarked,
+    },
+  ];
+
   return (
     <aside
       aria-label="Right Panel: 3D Tactile Sticky Notes & Simulation Studio"
-      className="rounded-2xl border-2 border-[#C8AE8D] bg-[#F3E5D0]/85 p-4 flex flex-col justify-between gap-4 h-full min-h-[760px] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.1)]"
+      className="rounded-2xl border-2 border-[#B89972] bg-[#F3E5D0]/90 p-4 flex flex-col justify-between gap-4 h-full min-h-[760px] shadow-[0_12px_28px_-6px_rgba(30,41,59,0.12)]"
     >
       <div className="space-y-4">
-        {/* Panel 1: 3D Tactile Sticky Notes with Paper-Curl 180deg Flip & SM-2 Spaced Repetition */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between border-b border-[#D4B996] pb-2">
-            <div>
-              <span className="text-[10px] font-mono uppercase tracking-wider text-[#8D6E63] font-bold block">
-                SM-2 Active Recall Flashcards
-              </span>
-              <h2 className="text-base font-bold font-serif text-[#1E293B] flex items-center gap-1.5">
-                <StickyNote className="w-4 h-4 text-[#F59E0B]" />
-                3D Sticky Note Desk
-              </h2>
-            </div>
+        {/* Clean Studio Header */}
+        <div className="flex items-center justify-between gap-2 border-b-2 border-[#D4B996] pb-3">
+          <div>
+            <span className="text-xs font-mono uppercase tracking-wide text-[#5D4037] font-bold block">
+              {currentSubject} Study Tools
+            </span>
+            <h2 className="text-lg font-bold font-serif text-[#1E293B]">
+              Practice &amp; Lab Studio
+            </h2>
+          </div>
 
+          {studioTab === 'stickies' && (
             <button
               id="add-3d-sticky-btn"
-              onClick={() => setShowAddForm(!showAddForm)}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#1A2E26] hover:bg-[#243F35] text-[#FDFBF7] text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+              type="button"
+              onClick={() => {
+                setShowAddForm(!showAddForm);
+                chiptuneAudio.playPaperFlip();
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1A2E26] hover:bg-[#243F35] text-[#FDFBF7] text-xs font-bold border border-[#1E293B] shadow-[2px_2px_0px_#FDE047] transition-all cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5 text-[#FDE047]" />
               Pin Note
             </button>
-          </div>
-
-          {/* Quick Add 3D Sticky Note Form */}
-          {showAddForm && (
-            <form
-              onSubmit={handleCreateSticky}
-              className="p-3 rounded-xl bg-[#FDFBF7] border-2 border-[#C8AE8D] space-y-2 shadow-md"
-            >
-              <input
-                type="text"
-                required
-                placeholder="Front Prompt (Active Recall Question)..."
-                value={newFront}
-                onChange={(e) => setNewFront(e.target.value)}
-                className="w-full px-2.5 py-1.5 rounded border border-slate-300 text-xs bg-white"
-              />
-              <textarea
-                rows={2}
-                required
-                placeholder="Reverse Side Answer / Formula intuition..."
-                value={newBack}
-                onChange={(e) => setNewBack(e.target.value)}
-                className="w-full px-2.5 py-1.5 rounded border border-slate-300 text-xs bg-white"
-              />
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  {(['yellow', 'mint', 'amber', 'coral'] as const).map(
-                    (col) => (
-                      <button
-                        type="button"
-                        key={col}
-                        onClick={() => setNewColor(col)}
-                        className={`w-5 h-5 rounded-full border-2 cursor-pointer ${
-                          STICKY_COLORS[col].frontBg
-                        } ${
-                          newColor === col
-                            ? 'border-[#1E293B] scale-110'
-                            : 'border-transparent'
-                        }`}
-                      />
-                    )
-                  )}
-                </div>
-                <button
-                  type="submit"
-                  className="px-3 py-1 rounded-lg bg-[#10B981] text-white text-xs font-bold cursor-pointer"
-                >
-                  Stick to Desk (+25 XP)
-                </button>
-              </div>
-            </form>
           )}
+        </div>
 
-          {/* 3D Sticky Notes Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-            {subjectStickies.map((note) => {
-              const isFlipped = !!flippedIds[note.id];
-              const palette = STICKY_COLORS[note.color];
-
-              return (
-                <div
-                  key={note.id}
-                  id={`sticky-note-card-${note.id}`}
-                  onClick={() => toggleFlip(note.id)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      toggleFlip(note.id);
-                    }
-                  }}
-                  className={`perspective-1200 h-40 cursor-pointer select-none transition-transform duration-300 hover:scale-[1.03] hover:-translate-y-1 ${note.rotationClass}`}
-                >
-                  <div
-                    className={`relative w-full h-full duration-500 preserve-3d transition-transform ${
-                      isFlipped ? 'rotate-y-180' : ''
+        {/* Persona-Style Skewed Folder Sub-Menu Bar */}
+        <div
+          role="tablist"
+          aria-label="Studio Tool Sections"
+          className="grid grid-cols-3 gap-1.5 bg-[#E6D5B8]/80 p-1 rounded-xl border border-[#C8AE8D]"
+        >
+          {STUDIO_TABS.map((tab) => {
+            const Icon = tab.icon;
+            const active = studioTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                id={`studio-tab-${tab.id}`}
+                role="tab"
+                aria-selected={active}
+                type="button"
+                onClick={() => handleSwitchStudioTab(tab.id)}
+                className={`relative flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  active
+                    ? 'text-[#1E293B]'
+                    : 'text-[#1E293B]/75 hover:text-[#1E293B]'
+                }`}
+              >
+                {active && (
+                  <motion.span
+                    layoutId="studio-subtab-pill"
+                    transition={{
+                      type: 'spring',
+                      stiffness: 430,
+                      damping: 30,
+                    }}
+                    className="absolute inset-0 bg-[#FDE047] border-2 border-[#1E293B] rounded-lg -skew-x-6 shadow-[2px_2px_0px_#1E293B]"
+                  />
+                )}
+                <Icon className="relative z-10 w-3.5 h-3.5 shrink-0" />
+                <span className="relative z-10 truncate">{tab.label}</span>
+                {tab.badge && (
+                  <span
+                    className={`relative z-10 px-1.5 py-0.5 rounded font-mono text-xs font-bold ${
+                      active
+                        ? 'bg-[#1A2E26] text-[#FDE047]'
+                        : 'bg-[#FDFBF7] text-[#1E293B]'
                     }`}
                   >
-                    {/* FRONT SIDE: Active Recall Question */}
-                    <div
-                      className={`absolute inset-0 backface-hidden sticky-paper-curl rounded-xl border-2 ${palette.border} ${palette.frontBg} p-3 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.12)] flex flex-col justify-between`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-700/80 flex items-center gap-1">
-                          <span
-                            className={`w-2.5 h-2.5 rounded-full ${palette.pinColor} shadow-xs inline-block`}
+                    {tab.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Animated Persona Menu Stage for Studio Views */}
+        <PersonaMenuStage stageKey={studioTab}>
+          {/* TAB 1: 3D Tactile Sticky Notes with 180deg Flip & SM-2 Interval */}
+          {studioTab === 'stickies' && (
+            <div className="space-y-3">
+              {showAddForm && (
+                <form
+                  onSubmit={handleCreateSticky}
+                  className="p-3.5 rounded-xl bg-[#FDFBF7] border-2 border-[#1E293B] space-y-2.5 shadow-[4px_4px_0px_#1E293B]"
+                >
+                  <input
+                    type="text"
+                    required
+                    placeholder="Front Prompt (Active Recall Question)..."
+                    value={newFront}
+                    onChange={(e) => setNewFront(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-[#C8AE8D] text-xs bg-white focus:outline-none focus:border-[#1A2E26]"
+                  />
+                  <textarea
+                    rows={2}
+                    required
+                    placeholder="Back Side Answer / Formula intuition..."
+                    value={newBack}
+                    onChange={(e) => setNewBack(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-[#C8AE8D] text-xs bg-white focus:outline-none focus:border-[#1A2E26]"
+                  />
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {(['yellow', 'mint', 'amber', 'coral'] as const).map(
+                        (col) => (
+                          <button
+                            type="button"
+                            key={col}
+                            aria-label={`Sticky color ${col}`}
+                            onClick={() => setNewColor(col)}
+                            className={`w-6 h-6 rounded-full border-2 cursor-pointer ${
+                              STICKY_COLORS[col].frontBg
+                            } ${
+                              newColor === col
+                                ? 'border-[#1E293B] scale-110'
+                                : 'border-transparent'
+                            }`}
                           />
-                          {note.masteryStatus.replace('_', ' ')}
-                        </span>
-                        <span className="text-[10px] font-mono text-slate-600 flex items-center gap-0.5">
-                          <RotateCw className="w-2.5 h-2.5" />
-                          Flip 180°
-                        </span>
-                      </div>
-
-                      <p className="text-xs font-bold text-[#1E293B] leading-snug line-clamp-3">
-                        {note.frontPrompt}
-                      </p>
-
-                      <div className="text-[10px] font-mono text-slate-600 flex items-center justify-between pt-1 border-t border-black/10">
-                        <span>
-                          SM-2: {note.intervalDays || 1}d • EF{' '}
-                          {(note.easeFactor || 2.5).toFixed(1)}
-                        </span>
-                        <Sparkles className="w-3 h-3 text-amber-700" />
-                      </div>
+                        )
+                      )}
                     </div>
-
-                    {/* REVERSE SIDE: Revealed Answer & Mastery Status Tagging */}
-                    <div
-                      className={`absolute inset-0 backface-hidden rotate-y-180 rounded-xl border-2 ${palette.border} ${palette.backBg} p-3 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.16)] flex flex-col justify-between`}
+                    <button
+                      type="submit"
+                      className="px-3.5 py-1.5 rounded-lg bg-[#10B981] hover:bg-[#059669] text-white text-xs font-bold cursor-pointer"
                     >
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-mono font-bold uppercase text-[#1E293B]">
-                          Reverse • Active Recall Answer
-                        </span>
-                        <RotateCw className="w-3 h-3 text-slate-700" />
-                      </div>
+                      Stick (+25 XP)
+                    </button>
+                  </div>
+                </form>
+              )}
 
-                      <p className="text-[11px] font-medium text-[#1E293B] leading-snug overflow-y-auto">
-                        {note.backAnswer}
-                      </p>
+              <p className="text-xs text-slate-700 font-medium px-0.5">
+                Click any sticky note to flip 180° and grade your active recall.
+              </p>
 
-                      {/* Tag Mastery Buttons */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
+                {subjectStickies.map((note) => {
+                  const isFlipped = !!flippedIds[note.id];
+                  const palette = STICKY_COLORS[note.color];
+
+                  return (
+                    <div
+                      key={note.id}
+                      id={`sticky-note-card-${note.id}`}
+                      onClick={() => toggleFlip(note.id)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          toggleFlip(note.id);
+                        }
+                      }}
+                      className={`perspective-1200 h-48 cursor-pointer select-none transition-transform duration-300 hover:scale-[1.03] hover:-translate-y-1 ${note.rotationClass}`}
+                    >
                       <div
-                        className="flex items-center gap-1 pt-1 border-t border-black/10"
-                        onClick={(e) => e.stopPropagation()}
+                        className={`relative w-full h-full duration-500 preserve-3d transition-transform ${
+                          isFlipped ? 'rotate-y-180' : ''
+                        }`}
                       >
-                        <button
-                          onClick={() =>
-                            updateStickyMastery(note.id, 'MASTERED')
-                          }
-                          title="Mark Mastered (Increases SM-2 Interval)"
-                          className="flex-1 py-0.5 rounded bg-[#10B981] text-white text-[9px] font-mono font-bold flex items-center justify-center gap-0.5 cursor-pointer"
+                        {/* FRONT SIDE */}
+                        <div
+                          className={`absolute inset-0 backface-hidden sticky-paper-curl rounded-xl border-2 ${palette.border} ${palette.frontBg} p-3.5 shadow-[0_10px_24px_-6px_rgba(0,0,0,0.14)] flex flex-col justify-between`}
                         >
-                          <CheckCircle2 className="w-2.5 h-2.5" />
-                          Mastered
-                        </button>
-                        <button
-                          onClick={() =>
-                            updateStickyMastery(note.id, 'SPACED_DUE')
-                          }
-                          title="Schedule Spaced Review (2d)"
-                          className="flex-1 py-0.5 rounded bg-[#F59E0B] text-white text-[9px] font-mono font-bold flex items-center justify-center gap-0.5 cursor-pointer"
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-mono font-bold uppercase text-slate-800 flex items-center gap-1.5">
+                              <span
+                                className={`w-2.5 h-2.5 rounded-full ${palette.pinColor} inline-block`}
+                              />
+                              {note.masteryStatus.replace('_', ' ')}
+                            </span>
+                            <span className="text-xs font-mono text-slate-700 flex items-center gap-1">
+                              <RotateCw className="w-3 h-3" />
+                              Flip
+                            </span>
+                          </div>
+
+                          <p className="text-sm font-bold text-[#1E293B] leading-snug line-clamp-3">
+                            {note.frontPrompt}
+                          </p>
+
+                          <div className="text-xs font-mono text-slate-700 flex items-center justify-between pt-1.5 border-t border-black/10">
+                            <span>
+                              SM-2: {note.intervalDays || 1}d • EF{' '}
+                              {(note.easeFactor || 2.5).toFixed(1)}
+                            </span>
+                            <Sparkles className="w-3.5 h-3.5 text-amber-800" />
+                          </div>
+                        </div>
+
+                        {/* REVERSE SIDE */}
+                        <div
+                          className={`absolute inset-0 backface-hidden rotate-y-180 rounded-xl border-2 ${palette.border} ${palette.backBg} p-3.5 shadow-[0_10px_24px_-6px_rgba(0,0,0,0.16)] flex flex-col justify-between`}
                         >
-                          <Clock className="w-2.5 h-2.5" />
-                          Due
-                        </button>
-                        <button
-                          onClick={() =>
-                            updateStickyMastery(note.id, 'WEAK_POINT')
-                          }
-                          title="Flag Weak Point (1d Reset)"
-                          className="flex-1 py-0.5 rounded bg-[#EF4444] text-white text-[9px] font-mono font-bold flex items-center justify-center gap-0.5 cursor-pointer"
-                        >
-                          <AlertTriangle className="w-2.5 h-2.5" />
-                          Weak
-                        </button>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-mono font-bold uppercase text-[#1E293B]">
+                              Answer
+                            </span>
+                            <RotateCw className="w-3.5 h-3.5 text-slate-700" />
+                          </div>
+
+                          <p className="text-xs font-medium text-[#1E293B] leading-relaxed overflow-y-auto pr-1">
+                            {note.backAnswer}
+                          </p>
+
+                          {/* Tag Mastery Buttons */}
+                          <div
+                            className="flex items-center gap-1.5 pt-1.5 border-t border-black/10"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateStickyMastery(note.id, 'MASTERED')
+                              }
+                              title="Mark Mastered (Increases SM-2 Interval)"
+                              className="flex-1 py-1 rounded-md bg-[#10B981] text-white text-xs font-bold flex items-center justify-center gap-1 cursor-pointer"
+                            >
+                              <CheckCircle2 className="w-3 h-3" />
+                              Got It
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateStickyMastery(note.id, 'SPACED_DUE')
+                              }
+                              title="Schedule Spaced Review (2d)"
+                              className="flex-1 py-1 rounded-md bg-[#F59E0B] text-white text-xs font-bold flex items-center justify-center gap-1 cursor-pointer"
+                            >
+                              <Clock className="w-3 h-3" />
+                              Review
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateStickyMastery(note.id, 'WEAK_POINT')
+                              }
+                              title="Flag Weak Point (1d Reset)"
+                              className="flex-1 py-1 rounded-md bg-[#EF4444] text-white text-xs font-bold flex items-center justify-center gap-1 cursor-pointer"
+                            >
+                              <AlertTriangle className="w-3 h-3" />
+                              Retry
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: Interactive STEM Simulation Sandbox */}
+          {studioTab === 'simulation' && (
+            <StemSimulationSandbox
+              currentSubject={currentSubject}
+              activeTopicId={activeTopicId}
+              simMeta={simMeta}
+            />
+          )}
+
+          {/* TAB 3: Cornell Notes Folio */}
+          {studioTab === 'cornell' && (
+            <div className="rounded-xl bg-[#FDFBF7] border-2 border-[#1E293B] p-4 school-stamp-card space-y-3.5">
+              <div className="flex items-center justify-between border-b border-[#E6D5B8] pb-2.5">
+                <div className="flex items-center gap-2">
+                  <BookMarked className="w-4 h-4 text-[#1A2E26]" />
+                  <h3 className="text-sm font-bold font-serif text-[#1E293B]">
+                    Cornell Recall Sheet
+                  </h3>
                 </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Panel 2: Topic-Specific Interactive Code-Rendered STEM Simulation Sandbox */}
-        <div className="rounded-xl bg-[#FDFBF7] border-2 border-[#B89972] p-3.5 shadow-md space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Sliders className="w-4 h-4 text-[#B45309] shrink-0" />
-              <h3 className="text-xs sm:text-sm font-bold font-serif text-[#1E293B] truncate">
-                {simMeta.title}
-              </h3>
-            </div>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#1A2E26] text-[#10B981] font-semibold shrink-0">
-              Retina Canvas
-            </span>
-          </div>
-
-          <canvas
-            ref={canvasRef}
-            width={360}
-            height={175}
-            className="w-full h-40 rounded-lg border-2 border-[#3E2723] shadow-inner"
-          />
-
-          {/* Tactile Brass & Wooden Parameter Sliders */}
-          <div className="space-y-2 pt-1">
-            <div>
-              <div className="flex items-center justify-between text-[11px] font-mono font-semibold text-[#5D4037] mb-0.5">
-                <span>{simMeta.sliderA}</span>
-                <span>{paramA}%</span>
+                <button
+                  id="save-cornell-notes-btn"
+                  type="button"
+                  onClick={handleSaveCornell}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#10B981] hover:bg-[#059669] text-white text-xs font-bold transition-colors cursor-pointer"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  {savedCornellBadge ? 'Saved!' : 'Save Folio (+20 XP)'}
+                </button>
               </div>
-              <input
-                id="sim-brass-slider-a"
-                type="range"
-                min={5}
-                max={95}
-                value={paramA}
-                onChange={(e) => setParamA(Number(e.target.value))}
-                className="w-full h-2 rounded-lg appearance-none bg-gradient-to-r from-[#D4B996] via-[#B45309] to-[#8D6E63] accent-[#5D4037] cursor-pointer"
-              />
-            </div>
 
-            <div>
-              <div className="flex items-center justify-between text-[11px] font-mono font-semibold text-[#5D4037] mb-0.5">
-                <span>{simMeta.sliderB}</span>
-                <span>{paramB}%</span>
+              <div className="grid grid-cols-12 gap-3">
+                <div className="col-span-5">
+                  <label
+                    htmlFor="cornell-cues-input"
+                    className="text-xs font-mono uppercase text-slate-600 font-bold block mb-1.5"
+                  >
+                    Recall Cues
+                  </label>
+                  <textarea
+                    id="cornell-cues-input"
+                    rows={7}
+                    value={cuesText}
+                    onChange={(e) => updateCornellDraft('cues', e.target.value)}
+                    className="w-full p-2.5 rounded-lg bg-[#F5EBE0]/75 border border-[#C8AE8D] text-xs text-[#1E293B] leading-relaxed focus:outline-none focus:border-[#1A2E26]"
+                  />
+                </div>
+
+                <div className="col-span-7">
+                  <label
+                    htmlFor="cornell-notes-input"
+                    className="text-xs font-mono uppercase text-slate-600 font-bold block mb-1.5"
+                  >
+                    Derivation &amp; Key Steps
+                  </label>
+                  <textarea
+                    id="cornell-notes-input"
+                    rows={7}
+                    value={notesText}
+                    onChange={(e) => updateCornellDraft('notes', e.target.value)}
+                    className="w-full p-2.5 rounded-lg bg-white border border-[#C8AE8D] text-xs text-[#1E293B] leading-relaxed focus:outline-none focus:border-[#1A2E26]"
+                  />
+                </div>
               </div>
-              <input
-                id="sim-wooden-slider-b"
-                type="range"
-                min={5}
-                max={95}
-                value={paramB}
-                onChange={(e) => setParamB(Number(e.target.value))}
-                className="w-full h-2 rounded-lg appearance-none bg-gradient-to-r from-[#D4B996] via-[#10B981] to-[#1A2E26] accent-[#1A2E26] cursor-pointer"
-              />
+
+              <div>
+                <label
+                  htmlFor="cornell-summary-input"
+                  className="text-xs font-mono uppercase text-slate-600 font-bold block mb-1.5"
+                >
+                  Synthesis Summary
+                </label>
+                <input
+                  id="cornell-summary-input"
+                  type="text"
+                  value={summaryText}
+                  onChange={(e) =>
+                    updateCornellDraft('summary', e.target.value)
+                  }
+                  className="w-full px-3 py-2 rounded-lg bg-[#F8F4EC] border border-[#C8AE8D] text-xs text-[#1E293B] font-medium focus:outline-none focus:border-[#1A2E26]"
+                />
+              </div>
             </div>
-          </div>
-        </div>
+          )}
+        </PersonaMenuStage>
       </div>
 
-      {/* Panel 3: Cornell Notes Folio & Past Paper Synthesis */}
-      <div className="rounded-xl bg-[#FDFBF7] border-2 border-[#C8AE8D] p-3.5 shadow-sm space-y-2.5">
-        <div className="flex items-center justify-between border-b border-[#E6D5B8] pb-2">
-          <div className="flex items-center gap-1.5">
-            <BookMarked className="w-4 h-4 text-[#1A2E26]" />
-            <h3 className="text-xs sm:text-sm font-bold font-serif text-[#1E293B]">
-              Cornell Active Recall Notes
-            </h3>
-          </div>
-          <button
-            id="save-cornell-notes-btn"
-            onClick={handleSaveCornell}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#10B981] hover:bg-[#059669] text-white text-[11px] font-bold transition-colors cursor-pointer"
-          >
-            <Save className="w-3 h-3" />
-            {savedCornellBadge ? 'Saved to Dexie!' : 'Save Folio'}
-          </button>
-        </div>
-
-        <div className="grid grid-cols-12 gap-2">
-          {/* Left 4 cols: Cues / Exam Prompts */}
-          <div className="col-span-5">
-            <label className="text-[10px] font-mono uppercase text-slate-500 font-bold block mb-1">
-              Recall Cues
-            </label>
-            <textarea
-              rows={3}
-              value={cuesText}
-              onChange={(e) => setCuesText(e.target.value)}
-              className="w-full p-2 rounded-lg bg-[#F5EBE0]/60 border border-[#D4B996] text-[11px] text-[#1E293B] leading-snug focus:outline-none"
-            />
-          </div>
-
-          {/* Right 8 cols: Condensed Notes */}
-          <div className="col-span-7">
-            <label className="text-[10px] font-mono uppercase text-slate-500 font-bold block mb-1">
-              Derivation &amp; Key Steps
-            </label>
-            <textarea
-              rows={3}
-              value={notesText}
-              onChange={(e) => setNotesText(e.target.value)}
-              className="w-full p-2 rounded-lg bg-white border border-[#D4B996] text-[11px] text-[#1E293B] leading-snug focus:outline-none"
-            />
-          </div>
-        </div>
-
-        {/* Bottom Summary Strip */}
-        <div>
-          <label className="text-[10px] font-mono uppercase text-slate-500 font-bold block mb-1">
-            2-Line Synthesis Summary
-          </label>
-          <input
-            type="text"
-            value={summaryText}
-            onChange={(e) => setSummaryText(e.target.value)}
-            className="w-full px-2.5 py-1.5 rounded-lg bg-[#F8F4EC] border border-[#D4B996] text-[11px] text-[#1E293B] font-medium focus:outline-none"
-          />
-        </div>
+      {/* Subtle Bottom Studio Reminder Footer */}
+      <div className="pt-3 border-t border-[#D4B996] flex items-center justify-between text-xs font-mono text-[#5D4037]">
+        <span>Local-First Saved</span>
+        <span>Topic: {activeTopicId.toUpperCase()}</span>
       </div>
     </aside>
   );

@@ -2,7 +2,14 @@
 
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Volume2, RotateCw, ShieldCheck } from 'lucide-react';
+import {
+  Sparkles,
+  Volume2,
+  RotateCw,
+  ShieldCheck,
+  Shirt,
+  ChevronDown,
+} from 'lucide-react';
 import { useStudyDeskStore } from '@/lib/store';
 import { chiptuneAudio } from '@/lib/audio';
 import type { BloomsLevel } from '@/lib/gemini';
@@ -22,10 +29,10 @@ interface ProfessorBarnabyProps {
 }
 
 const COSTUME_LABELS: Record<BarnabyCostume, string> = {
-  maths: 'Maths: Grid Bowtie + Round Glasses',
-  'lab-science': 'Lab: Paper Coat + Safety Goggles',
-  'focus-sprint': 'Sprint: Red Headband + Stopwatch',
-  'revision-test': 'Revision: Graduation Mortarboard',
+  maths: 'Maths Owl (Bowtie + Glasses)',
+  'lab-science': 'Science Lab (Coat + Goggles)',
+  'focus-sprint': 'Focus Sprint (Headband)',
+  'revision-test': 'Revision Exam (Mortarboard)',
 };
 
 export function ProfessorBarnaby({
@@ -39,8 +46,23 @@ export function ProfessorBarnaby({
   const [manualCostume, setManualCostume] = useState<BarnabyCostume | null>(
     null
   );
-  const [displayedText, setDisplayedText] = useState('');
-  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [outfitMenuOpen, setOutfitMenuOpen] = useState(false);
+  const [replayCount, setReplayCount] = useState(0);
+  const streamKey = `${speechText}::${isStreamingTrigger}::${replayCount}`;
+  const [streamState, setStreamState] = useState<{
+    forKey: string;
+    text: string;
+    speaking: boolean;
+  }>({
+    forKey: '',
+    text: '',
+    speaking: false,
+  });
+
+  const displayedText =
+    streamState.forKey === streamKey ? streamState.text : '';
+  const isSpeaking =
+    streamState.forKey === streamKey ? streamState.speaking : false;
 
   // Derive active costume from context unless manually overridden
   const derivedCostume: BarnabyCostume = manualCostume
@@ -59,26 +81,35 @@ export function ProfessorBarnaby({
       typeof window !== 'undefined' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    if (prefersReducedMotion) {
-      setDisplayedText(speechText);
-      setIsSpeaking(false);
-      return;
-    }
-
     let index = 0;
-    setDisplayedText('');
-    setIsSpeaking(true);
-
     const interval = setInterval(() => {
-      index += 2;
-      if (index >= speechText.length) {
-        setDisplayedText(speechText);
-        setIsSpeaking(false);
+      if (prefersReducedMotion) {
+        setStreamState({
+          forKey: streamKey,
+          text: speechText,
+          speaking: false,
+        });
         clearInterval(interval);
         return;
       }
+
+      index += 2;
+      if (index >= speechText.length) {
+        setStreamState({
+          forKey: streamKey,
+          text: speechText,
+          speaking: false,
+        });
+        clearInterval(interval);
+        return;
+      }
+
       const nextSlice = speechText.slice(0, index);
-      setDisplayedText(nextSlice);
+      setStreamState({
+        forKey: streamKey,
+        text: nextSlice,
+        speaking: true,
+      });
 
       // Trigger soft 8-bit chiptune blip every 3rd character
       if (index % 3 === 0) {
@@ -88,78 +119,111 @@ export function ProfessorBarnaby({
     }, 18);
 
     return () => clearInterval(interval);
-  }, [speechText, isStreamingTrigger]);
+  }, [speechText, streamKey]);
 
   const replaySpeech = () => {
-    let idx = 0;
-    setDisplayedText('');
-    setIsSpeaking(true);
-    const interval = setInterval(() => {
-      idx += 2;
-      if (idx >= speechText.length) {
-        setDisplayedText(speechText);
-        setIsSpeaking(false);
-        clearInterval(interval);
-        return;
-      }
-      setDisplayedText(speechText.slice(0, idx));
-      if (idx % 3 === 0) {
-        chiptuneAudio.playSyllableBlip(idx, speechText[idx - 1] || 'e');
-      }
-    }, 18);
+    setReplayCount((c) => c + 1);
   };
 
   return (
-    <div className="relative rounded-2xl border-2 border-[#C8AE8D] bg-gradient-to-b from-[#F9F3E8] to-[#F3E7D3] p-3.5 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.08)]">
-      {/* Top Status & Costume Switcher Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-3 pb-2 border-b border-[#E2D2B8]">
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#1A2E26] text-[#FDFBF7] text-[11px] font-mono font-semibold">
-            <Sparkles className="w-3 h-3 text-[#FDE047]" />
-            Professor Barnaby • Paper-Craft Owl AI
+    <div className="relative rounded-2xl border-2 border-[#B89972] bg-gradient-to-b from-[#FAF4E8] to-[#F3E7D3] p-4 shadow-[3px_3px_0px_#C8AE8D]">
+      {/* Clean Single-Row Barnaby Header */}
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3 pb-2.5 border-b border-[#DFCEB2]">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#1A2E26] text-[#FDFBF7] text-xs font-mono font-bold">
+            <Sparkles className="w-3.5 h-3.5 text-[#FDE047]" />
+            Professor Barnaby
           </span>
-          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#10B981]/15 text-[#065F46] border border-[#10B981]/30 font-semibold">
+          <span className="text-xs font-mono px-2.5 py-1 rounded-lg bg-[#10B981]/15 text-[#065F46] border border-[#10B981]/30 font-semibold">
             Bloom&apos;s: {bloomsLevel}
           </span>
           <span
-            className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1"
-            title="Gemini 2.0 Flash 3-Key Rotator Slot"
+            className="text-xs font-mono px-2 py-1 rounded-lg bg-[#FDFBF7] text-slate-700 border border-[#D4B996] flex items-center gap-1"
+            title="Active Gemini 2.0 Flash Key Rotator Slot"
           >
-            <ShieldCheck className="w-3 h-3 text-[#10B981]" />
+            <ShieldCheck className="w-3.5 h-3.5 text-[#10B981]" />
             {keyUsed}
           </span>
         </div>
 
-        {/* Costume Context Pills */}
-        <div className="flex items-center gap-1 flex-wrap">
-          {(
-            [
-              { id: 'maths', short: 'Maths Owl' },
-              { id: 'lab-science', short: 'Lab Coat' },
-              { id: 'focus-sprint', short: 'Focus Band' },
-              { id: 'revision-test', short: 'Mortarboard' },
-            ] as const
-          ).map((c) => {
-            const active = derivedCostume === c.id;
-            return (
-              <button
-                key={c.id}
-                id={`barnaby-costume-${c.id}`}
-                onClick={() => {
-                  setManualCostume(c.id === manualCostume ? null : c.id);
-                  chiptuneAudio.playPaperFlip();
-                }}
-                title={COSTUME_LABELS[c.id]}
-                className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-all cursor-pointer ${
-                  active
-                    ? 'bg-[#5D4037] text-[#FDFBF7] shadow-xs'
-                    : 'bg-[#FDFBF7] text-slate-600 hover:bg-[#E6D5B8]/60 border border-[#D4B996]'
-                }`}
+        {/* Compact Outfit Selector Toggle */}
+        <div className="relative">
+          <button
+            type="button"
+            id="barnaby-outfit-menu-btn"
+            onClick={() => {
+              setOutfitMenuOpen((prev) => !prev);
+              chiptuneAudio.playPaperFlip();
+            }}
+            aria-expanded={outfitMenuOpen}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#FDFBF7] hover:bg-[#E6D5B8]/60 border border-[#B89972] text-xs font-semibold text-[#1E293B] cursor-pointer transition-colors"
+          >
+            <Shirt className="w-3.5 h-3.5 text-[#5D4037]" />
+            <span>Outfit</span>
+            <ChevronDown
+              className={`w-3.5 h-3.5 transition-transform ${
+                outfitMenuOpen ? 'rotate-180' : ''
+              }`}
+            />
+          </button>
+
+          <AnimatePresence>
+            {outfitMenuOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: -6, skewX: -2 }}
+                animate={{ opacity: 1, y: 0, skewX: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+                className="absolute right-0 mt-1.5 w-52 z-30 rounded-xl bg-[#FDFBF7] border-2 border-[#1E293B] p-1.5 shadow-[4px_4px_0px_#1E293B] space-y-1"
               >
-                {c.short}
-              </button>
-            );
-          })}
+                {(
+                  [
+                    { id: 'maths', label: 'Maths Bowtie' },
+                    { id: 'lab-science', label: 'Science Lab Coat' },
+                    { id: 'focus-sprint', label: 'Focus Headband' },
+                    { id: 'revision-test', label: 'Grad Mortarboard' },
+                  ] as const
+                ).map((c) => {
+                  const active = derivedCostume === c.id;
+                  return (
+                    <button
+                      key={c.id}
+                      id={`barnaby-costume-${c.id}`}
+                      type="button"
+                      onClick={() => {
+                        setManualCostume(c.id === manualCostume ? null : c.id);
+                        setOutfitMenuOpen(false);
+                        chiptuneAudio.playPaperFlip();
+                      }}
+                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center justify-between ${
+                        active
+                          ? 'bg-[#1A2E26] text-[#FDFBF7]'
+                          : 'text-slate-700 hover:bg-[#F5EBE0]'
+                      }`}
+                    >
+                      <span>{c.label}</span>
+                      {active && (
+                        <span className="text-[#FDE047] font-mono">ON</span>
+                      )}
+                    </button>
+                  );
+                })}
+                {manualCostume && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setManualCostume(null);
+                      setOutfitMenuOpen(false);
+                      chiptuneAudio.playPaperFlip();
+                    }}
+                    className="w-full text-left px-2.5 py-1 rounded-lg text-xs font-mono text-slate-600 hover:bg-[#E6D5B8]/60 border-t border-[#E6D5B8] mt-1 pt-1.5 cursor-pointer"
+                  >
+                    Reset to Auto-Context
+                  </button>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
@@ -540,8 +604,8 @@ export function ProfessorBarnaby({
               strokeWidth="1.5"
             />
           </svg>
-          <span className="text-[10px] font-mono text-slate-600 font-semibold -mt-1">
-            {COSTUME_LABELS[derivedCostume].split(':')[0]} Mode
+          <span className="text-xs font-mono text-slate-600 font-semibold -mt-1 text-center">
+            {COSTUME_LABELS[derivedCostume].split(' (')[0]}
           </span>
         </motion.div>
 
@@ -550,14 +614,14 @@ export function ProfessorBarnaby({
           <AnimatePresence mode="wait">
             <motion.div
               key={speechText.slice(0, 24)}
-              initial={{ opacity: 0.7, scaleY: 0.94 }}
+              initial={{ opacity: 0.75, scaleY: 0.94 }}
               animate={{ opacity: 1, scaleY: 1 }}
-              transition={{ duration: 0.25 }}
+              transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
               className="barnaby-scroll-surface relative rounded-xl border-2 border-[#C8AE8D] p-3.5 text-[#1E293B]"
             >
-              {/* Wooden Scroll Rollers Left & Right */}
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-[#8D6E63] font-bold flex items-center gap-1.5">
+              {/* Scroll Header Bar */}
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-mono uppercase tracking-wide text-[#8D6E63] font-bold flex items-center gap-1.5">
                   <Volume2
                     className={`w-3.5 h-3.5 ${
                       isSpeaking && !audioMuted
@@ -566,34 +630,38 @@ export function ProfessorBarnaby({
                     }`}
                   />
                   {isSpeaking
-                    ? '8-Bit Chiptune Voice Streaming...'
-                    : 'Unrolled Socratic Scroll'}
+                    ? 'Chiptune Voice Streaming...'
+                    : 'Socratic Scroll'}
                 </span>
                 <button
                   id="barnaby-replay-voice-btn"
+                  type="button"
                   onClick={replaySpeech}
-                  className="text-[10px] font-mono text-slate-600 hover:text-[#1A2E26] flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#E6D5B8]/60 hover:bg-[#E6D5B8] transition-colors cursor-pointer"
+                  className="text-xs font-mono text-slate-700 hover:text-[#1A2E26] flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#E6D5B8]/60 hover:bg-[#E6D5B8] transition-colors cursor-pointer"
                   title="Replay Scroll & 8-Bit Chiptune Audio"
                 >
-                  <RotateCw className="w-2.5 h-2.5" />
-                  Replay Scroll
+                  <RotateCw className="w-3 h-3" />
+                  Replay
                 </button>
               </div>
 
               {/* Clean, natural human English prose (NEVER literal beep-boop text) */}
-              <p className="text-xs sm:text-sm leading-relaxed text-[#1E293B] font-normal">
+              <p
+                aria-live="polite"
+                className="text-sm leading-relaxed text-[#1E293B] font-normal"
+              >
                 {displayedText}
                 {isSpeaking && (
-                  <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-[#10B981] animate-pulse align-middle" />
+                  <span className="inline-block w-1.5 h-4 ml-0.5 bg-[#10B981] animate-pulse align-middle" />
                 )}
               </p>
 
               {/* Socratic Guiding Question Highlight */}
               <div className="mt-3 pt-2.5 border-t border-[#E5D5BC] flex items-start gap-2">
-                <span className="px-1.5 py-0.5 rounded bg-[#1A2E26] text-[#FDE047] text-[10px] font-mono font-bold uppercase shrink-0 mt-0.5">
-                  Socratic Prompt
+                <span className="px-2 py-0.5 rounded bg-[#1A2E26] text-[#FDE047] text-xs font-mono font-bold uppercase shrink-0 mt-0.5">
+                  Prompt
                 </span>
-                <p className="text-xs sm:text-[13px] font-semibold text-[#1A2E26] italic">
+                <p className="text-xs sm:text-sm font-semibold text-[#1A2E26] italic leading-snug">
                   &ldquo;{socraticQuestion}&rdquo;
                 </p>
               </div>

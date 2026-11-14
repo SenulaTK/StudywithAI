@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   BookOpen,
-  Clock,
   Play,
   Pause,
   RotateCcw,
@@ -13,26 +13,40 @@ import {
   Download,
   Upload,
   KeyRound,
-  Maximize2,
-  PanelLeft,
-  PanelRight,
   Columns3,
+  Map,
+  BookOpenCheck,
+  FlaskConical,
   Award,
   Flame,
   HardDrive,
   CheckCircle2,
+  X,
 } from 'lucide-react';
 import {
   useStudyDeskStore,
   type SubjectName,
   type SyllabusBoard,
+  type CameraPanTarget,
 } from '@/lib/store';
 import { chiptuneAudio } from '@/lib/audio';
 import { geminiRotator, type KeySlotStatus } from '@/lib/gemini';
 import { storageAdapter, type StorageProviderType } from '@/lib/storage';
+import { PersonaMenuStage } from '@/components/transitions/PersonaSchoolTransition';
 
 const SUBJECTS: SubjectName[] = ['Mathematics', 'Physics', 'Chemistry'];
 const BOARDS: SyllabusBoard[] = ['AQA', 'Edexcel', 'OCR', 'IB'];
+
+const STATIONS: Array<{
+  id: CameraPanTarget;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}> = [
+  { id: 'overview', label: 'Study Desk', icon: Columns3 },
+  { id: 'left', label: 'Chalkboard', icon: Map },
+  { id: 'center', label: 'Workbook', icon: BookOpenCheck },
+  { id: 'right', label: '3D Studio', icon: FlaskConical },
+];
 
 const SQUAD_MEMBERS = [
   {
@@ -82,18 +96,18 @@ export function DeskHeader() {
     hydrateFromArchive,
   } = useStudyDeskStore();
 
-  // Pomodoro Analog Desk Clock state (25 minutes = 1500 seconds)
   const [secondsLeft, setSecondsLeft] = useState(25 * 60);
   const [pomodoroRunning, setPomodoroRunning] = useState(false);
   const [showVaultModal, setShowVaultModal] = useState(false);
+  const [vaultTab, setVaultTab] = useState<'keys' | 'archive' | 'squad'>(
+    'keys'
+  );
   const [keySlots, setKeySlots] = useState<KeySlotStatus[]>(
     geminiRotator.getTelemetry().slots
   );
-  const [customKeyInputs, setCustomKeyInputs] = useState<[string, string, string]>([
-    '',
-    '',
-    '',
-  ]);
+  const [customKeyInputs, setCustomKeyInputs] = useState<
+    [string, string, string]
+  >(['', '', '']);
   const [activeStorageProvider, setActiveStorageProvider] =
     useState<StorageProviderType>(storageAdapter.getProvider());
   const [archiveToast, setArchiveToast] = useState<string | null>(null);
@@ -148,10 +162,23 @@ export function DeskHeader() {
   const mins = Math.floor(secondsLeft / 60);
   const secs = secondsLeft % 60;
   const formattedTime = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-
-  // Analog hand rotation angles
   const minuteAngle = ((1500 - secondsLeft) / 1500) * 360;
   const secondAngle = ((60 - secs) % 60) * 6;
+
+  const handleStationSelect = (target: CameraPanTarget) => {
+    if (target === cameraPan) return;
+    chiptuneAudio.playMenuSlash();
+    if (target === 'overview') panToOverview();
+    else if (target === 'left') panToLeft();
+    else if (target === 'center') panToCenter();
+    else panToRight();
+  };
+
+  const handleSubjectSelect = (subj: SubjectName) => {
+    if (subj === currentSubject) return;
+    chiptuneAudio.playSchoolBellChime();
+    setSubject(subj);
+  };
 
   const handleExportDesk = async () => {
     const topicBadges: Record<string, string> = {};
@@ -171,7 +198,7 @@ export function DeskHeader() {
       backpackFiles,
       cornellNotes: Object.values(cornellNotes),
     });
-    setArchiveToast('Exported zero-cloud .desk archive to your device!');
+    setArchiveToast('Saved .desk archive to your computer!');
     setTimeout(() => setArchiveToast(null), 3500);
   };
 
@@ -183,7 +210,8 @@ export function DeskHeader() {
       hydrateFromArchive({
         userXP: archive.userXP,
         streakCount: archive.streakCount,
-        currentSubject: (archive.currentSubject as SubjectName) || 'Mathematics',
+        currentSubject:
+          (archive.currentSubject as SubjectName) || 'Mathematics',
         syllabusBoard: (archive.syllabusBoard as SyllabusBoard) || 'AQA',
         topicBadges: archive.topicBadges,
         stickyNotes: archive.stickyNotes || stickyNotes,
@@ -191,7 +219,9 @@ export function DeskHeader() {
         cornellNotes: archive.cornellNotes,
       });
       chiptuneAudio.playMasteryFanfare();
-      setArchiveToast(`Restored .desk snapshot (${archive.stickyNotes.length} notes)!`);
+      setArchiveToast(
+        `Restored .desk snapshot (${archive.stickyNotes.length} flashcards)!`
+      );
       setTimeout(() => setArchiveToast(null), 4000);
     } catch {
       setArchiveToast('Could not parse .desk archive file.');
@@ -207,32 +237,27 @@ export function DeskHeader() {
   };
 
   return (
-    <header className="w-full border-b-2 border-[#D4B996] bg-[#EFE2D0]/95 backdrop-blur-md px-3 py-2.5 shadow-[0_6px_20px_-4px_rgba(62,39,35,0.12)] z-30">
-      <div className="max-w-[1800px] mx-auto flex flex-wrap items-center justify-between gap-3">
-        {/* LEFT: Subject Slate Badge & Exam Syllabus Selector */}
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <div className="chalkboard-surface border-2 border-[#5D4037] rounded-xl px-3.5 py-1.5 flex items-center gap-2.5 text-[#F1F5F9] shadow-md">
-            <BookOpen className="w-4 h-4 text-[#10B981] shrink-0" />
+    <header className="w-full border-b-2 border-[#C8AE8D] bg-[#F3E6D3]/95 backdrop-blur-md px-3 sm:px-5 py-2.5 shadow-sm z-30 sticky top-0">
+      <div className="max-w-[1760px] mx-auto flex flex-wrap items-center justify-between gap-3">
+        {/* LEFT: School Brand Crest & Subject Period Switcher */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="chalkboard-surface border-2 border-[#4E342E] rounded-xl px-3.5 py-1.5 flex items-center gap-2.5 text-[#FDFBF7] shadow-[2px_2px_0px_#3E2723]">
+            <BookOpen className="w-4 h-4 text-[#FDE047] shrink-0" />
             <div>
-              <div className="flex items-center gap-1.5">
-                <h1 className="text-xs sm:text-sm font-bold tracking-tight font-serif text-[#FDFBF7]">
-                  Professor Barnaby&apos;s Study Desk
-                </h1>
-                <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/40">
-                  ITS v2.5
-                </span>
-              </div>
-              <p className="text-[10px] text-slate-300 hidden sm:block">
-                Dual-Coding • Socratic Active Mastery • Local-First BYOS
+              <h1 className="text-sm font-bold tracking-tight font-serif leading-tight">
+                Barnaby&apos;s Study Desk
+              </h1>
+              <p className="text-xs text-emerald-200/90 font-mono leading-tight hidden sm:block">
+                {syllabusBoard} Classroom • Period: {currentSubject}
               </p>
             </div>
           </div>
 
-          {/* Subject Pills */}
+          {/* Subject Period Tabs with Skewed Persona Highlighter */}
           <div
-            className="flex items-center bg-[#E6D5B8] p-1 rounded-xl border border-[#C8AE8D] shadow-inner"
+            className="flex items-center bg-[#E6D5B8] p-1 rounded-xl border border-[#C8AE8D]"
             role="group"
-            aria-label="Subject Selector"
+            aria-label="Subject Period Selector"
           >
             {SUBJECTS.map((subj) => {
               const active = currentSubject === subj;
@@ -240,116 +265,97 @@ export function DeskHeader() {
                 <button
                   key={subj}
                   id={`subject-tab-${subj.toLowerCase()}`}
-                  onClick={() => {
-                    setSubject(subj);
-                    chiptuneAudio.playPaperFlip();
-                  }}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  onClick={() => handleSubjectSelect(subj)}
+                  className={`relative px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                     active
-                      ? 'bg-[#1A2E26] text-[#FDFBF7] shadow-sm'
-                      : 'text-[#1E293B]/80 hover:text-[#1E293B] hover:bg-[#FDFBF7]/50'
+                      ? 'text-[#1E293B]'
+                      : 'text-[#1E293B]/75 hover:text-[#1E293B]'
                   }`}
                 >
-                  {subj}
+                  {active && (
+                    <motion.span
+                      layoutId="subject-highlighter"
+                      transition={{
+                        type: 'spring',
+                        stiffness: 420,
+                        damping: 30,
+                      }}
+                      className="absolute inset-0 bg-[#FDE047] border border-[#1E293B] rounded-lg -skew-x-6 shadow-[2px_2px_0px_#1E293B]"
+                    />
+                  )}
+                  <span className="relative z-10">{subj}</span>
                 </button>
               );
             })}
           </div>
 
-          {/* Exam Board Selector */}
           <select
             id="syllabus-board-select"
             aria-label="Exam Syllabus Board"
             value={syllabusBoard}
-            onChange={(e) =>
-              setSyllabusBoard(e.target.value as SyllabusBoard)
-            }
-            className="bg-[#FDFBF7] border border-[#C8AE8D] rounded-lg px-2.5 py-1.5 text-xs font-mono font-semibold text-[#1E293B] shadow-xs cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#1A2E26]"
+            onChange={(e) => {
+              setSyllabusBoard(e.target.value as SyllabusBoard);
+              chiptuneAudio.playPaperFlip();
+            }}
+            className="bg-[#FDFBF7] border border-[#B89972] rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-[#1E293B] cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#1A2E26]"
           >
             {BOARDS.map((b) => (
               <option key={b} value={b}>
-                {b} Syllabus
+                {b}
               </option>
             ))}
           </select>
         </div>
 
-        {/* CENTER: 3D Camera Panning Controls & Analog Desk Clock (Pomodoro) */}
-        <div className="flex items-center gap-3 flex-wrap">
-          {/* Camera Pan Controls */}
-          <div className="flex items-center bg-[#FDFBF7] border border-[#C8AE8D] rounded-xl p-1 shadow-xs">
-            <button
-              id="camera-pan-overview"
-              onClick={() => {
-                panToOverview();
-                chiptuneAudio.playPaperFlip();
-              }}
-              title="Full 3-Panel Desk View"
-              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                cameraPan === 'overview'
-                  ? 'bg-[#1A2E26] text-[#FDFBF7]'
-                  : 'text-slate-700 hover:bg-[#F5EBE0]'
-              }`}
-            >
-              <Columns3 className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">3-Panel Desk</span>
-            </button>
-            <button
-              id="camera-pan-left"
-              onClick={() => {
-                panToLeft();
-                chiptuneAudio.playPaperFlip();
-              }}
-              title="Pan Camera to Left Chalkboard Roadmap"
-              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                cameraPan === 'left'
-                  ? 'bg-[#1A2E26] text-[#FDFBF7]'
-                  : 'text-slate-700 hover:bg-[#F5EBE0]'
-              }`}
-            >
-              <PanelLeft className="w-3.5 h-3.5" />
-              <span className="hidden xl:inline">Roadmap</span>
-            </button>
-            <button
-              id="camera-pan-center"
-              onClick={() => {
-                panToCenter();
-                chiptuneAudio.playPaperFlip();
-              }}
-              title="Pan Camera to Center Open Workbook"
-              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                cameraPan === 'center'
-                  ? 'bg-[#1A2E26] text-[#FDFBF7]'
-                  : 'text-slate-700 hover:bg-[#F5EBE0]'
-              }`}
-            >
-              <Maximize2 className="w-3.5 h-3.5" />
-              <span className="hidden xl:inline">Workbook</span>
-            </button>
-            <button
-              id="camera-pan-right"
-              onClick={() => {
-                panToRight();
-                chiptuneAudio.playPaperFlip();
-              }}
-              title="Pan Camera to Right 3D Sticky & Sim Studio"
-              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                cameraPan === 'right'
-                  ? 'bg-[#1A2E26] text-[#FDFBF7]'
-                  : 'text-slate-700 hover:bg-[#F5EBE0]'
-              }`}
-            >
-              <PanelRight className="w-3.5 h-3.5" />
-              <span className="hidden xl:inline">3D Studio</span>
-            </button>
-          </div>
+        {/* CENTER: Classroom Station Switcher (Clear 1-Click Menu Navigation) */}
+        <nav
+          aria-label="Classroom Station Navigation"
+          className="flex items-center bg-[#FDFBF7] border-2 border-[#B89972] rounded-xl p-1 shadow-[2px_2px_0px_#C8AE8D]"
+        >
+          {STATIONS.map((station) => {
+            const Icon = station.icon;
+            const active = cameraPan === station.id;
+            return (
+              <button
+                key={station.id}
+                id={`camera-pan-${station.id}`}
+                type="button"
+                title={station.label}
+                aria-label={station.label}
+                aria-current={active ? 'page' : undefined}
+                onClick={() => handleStationSelect(station.id)}
+                className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  active
+                    ? 'text-[#FDFBF7]'
+                    : 'text-[#1E293B]/80 hover:text-[#1E293B]'
+                }`}
+              >
+                {active && (
+                  <motion.span
+                    layoutId="station-active-pill"
+                    transition={{
+                      type: 'spring',
+                      stiffness: 440,
+                      damping: 32,
+                    }}
+                    className="absolute inset-0 bg-[#1A2E26] border border-[#1E293B] rounded-lg -skew-x-6 shadow-[2px_2px_0px_#10B981]"
+                  />
+                )}
+                <Icon className="relative z-10 w-3.5 h-3.5 shrink-0" />
+                <span className="relative z-10 hidden sm:inline">
+                  {station.label}
+                </span>
+              </button>
+            );
+          })}
+        </nav>
 
-          {/* ⏱️ Analog Desk Clock (Pomodoro Focus Sprint) */}
-          <div className="flex items-center gap-2 bg-[#FDFBF7] border-2 border-[#B89972] rounded-xl px-3 py-1 shadow-[0_4px_12px_rgba(62,39,35,0.1)]">
-            {/* Tactile Brass Analog Clock SVG */}
-            <div className="relative w-8 h-8 rounded-full border-2 border-[#8D6E63] bg-[#FFFDF9] shadow-inner flex items-center justify-center shrink-0">
+        {/* RIGHT: Analog Pomodoro Clock, Streak/XP, Audio & Desk Vault */}
+        <div className="flex items-center gap-2">
+          {/* Compact Brass Analog Pomodoro Clock */}
+          <div className="flex items-center gap-2 bg-[#FDFBF7] border border-[#B89972] rounded-xl px-2.5 py-1 shadow-xs">
+            <div className="relative w-7 h-7 rounded-full border-2 border-[#8D6E63] bg-[#FFFDF9] flex items-center justify-center shrink-0">
               <svg viewBox="0 0 40 40" className="w-full h-full">
-                {/* Clock ticks */}
                 <circle
                   cx="20"
                   cy="20"
@@ -360,119 +366,74 @@ export function DeskHeader() {
                 />
                 <line
                   x1="20"
-                  y1="3"
-                  x2="20"
-                  y2="6"
-                  stroke="#5D4037"
-                  strokeWidth="1.5"
-                />
-                <line
-                  x1="37"
-                  y1="20"
-                  x2="34"
-                  y2="20"
-                  stroke="#5D4037"
-                  strokeWidth="1.5"
-                />
-                <line
-                  x1="20"
-                  y1="37"
-                  x2="20"
-                  y2="34"
-                  stroke="#5D4037"
-                  strokeWidth="1.5"
-                />
-                <line
-                  x1="3"
-                  y1="20"
-                  x2="6"
-                  y2="20"
-                  stroke="#5D4037"
-                  strokeWidth="1.5"
-                />
-                {/* Minute hand */}
-                <line
-                  x1="20"
                   y1="20"
                   x2="20"
                   y2="8"
                   stroke="#1E293B"
-                  strokeWidth="2"
+                  strokeWidth="2.2"
                   strokeLinecap="round"
                   transform={`rotate(${minuteAngle} 20 20)`}
                 />
-                {/* Second hand */}
                 <line
                   x1="20"
                   y1="20"
                   x2="20"
                   y2="6"
                   stroke="#EF4444"
-                  strokeWidth="1.2"
+                  strokeWidth="1.4"
                   strokeLinecap="round"
                   transform={`rotate(${secondAngle} 20 20)`}
                 />
                 <circle cx="20" cy="20" r="2" fill="#5D4037" />
               </svg>
             </div>
-
-            <div className="flex flex-col">
-              <span className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 flex items-center gap-1">
-                <Clock className="w-2.5 h-2.5 text-[#F59E0B]" />
-                {pomodoroRunning ? 'Focus Sprint' : 'Desk Pomodoro'}
-              </span>
-              <span className="text-xs font-mono font-bold text-[#1E293B]">
-                {formattedTime}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-1 ml-1">
-              <button
-                id="pomodoro-toggle-btn"
-                onClick={togglePomodoro}
-                title={
-                  pomodoroRunning
-                    ? 'Pause Focus Sprint'
-                    : 'Start 25m Focus Sprint (Equips Barnaby Focus Headband)'
-                }
-                className={`p-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
-                  pomodoroRunning
-                    ? 'bg-[#EF4444] text-white'
-                    : 'bg-[#10B981] text-white hover:bg-[#059669]'
-                }`}
-              >
-                {pomodoroRunning ? (
-                  <Pause className="w-3 h-3" />
-                ) : (
-                  <Play className="w-3 h-3" />
-                )}
-              </button>
+            <span className="text-xs font-mono font-bold text-[#1E293B]">
+              {formattedTime}
+            </span>
+            <button
+              id="pomodoro-toggle-btn"
+              onClick={togglePomodoro}
+              title={
+                pomodoroRunning
+                  ? 'Pause Focus Sprint'
+                  : 'Start 25m Focus Sprint'
+              }
+              className={`p-1.5 rounded-lg text-white transition-colors cursor-pointer ${
+                pomodoroRunning
+                  ? 'bg-[#EF4444]'
+                  : 'bg-[#10B981] hover:bg-[#059669]'
+              }`}
+            >
+              {pomodoroRunning ? (
+                <Pause className="w-3 h-3" />
+              ) : (
+                <Play className="w-3 h-3" />
+              )}
+            </button>
+            {(pomodoroRunning || secondsLeft < 1500) && (
               <button
                 id="pomodoro-reset-btn"
                 onClick={resetPomodoro}
-                title="Reset Desk Clock"
-                className="p-1.5 rounded-lg bg-[#F5EBE0] hover:bg-[#E6D5B8] text-slate-700 transition-colors cursor-pointer"
+                title="Reset Clock"
+                className="p-1 rounded-lg bg-[#F5EBE0] hover:bg-[#E6D5B8] text-slate-700 cursor-pointer"
               >
                 <RotateCcw className="w-3 h-3" />
               </button>
-            </div>
+            )}
           </div>
-        </div>
 
-        {/* RIGHT: XP / Streak Badges, Study Squad Avatars, Audio & BYOS/Key Modal */}
-        <div className="flex items-center gap-2.5">
           {/* Streak & XP Pill */}
-          <div className="hidden sm:flex items-center gap-2 bg-[#1A2E26] text-[#FDFBF7] px-3 py-1.5 rounded-xl border border-[#3E2723] text-xs font-mono">
+          <div className="hidden md:flex items-center gap-2 bg-[#1A2E26] text-[#FDFBF7] px-3 py-1.5 rounded-xl border border-[#3E2723] text-xs font-mono">
             <span
-              className="flex items-center gap-1 text-[#F59E0B]"
-              title="Daily Active Mastery Streak"
+              className="flex items-center gap-1 text-[#F59E0B] font-bold"
+              title="Daily Study Streak"
             >
               <Flame className="w-3.5 h-3.5 fill-[#F59E0B]" />
               {streakCount}d
             </span>
             <span className="text-slate-500">|</span>
             <span
-              className="flex items-center gap-1 text-[#FDE047]"
+              className="flex items-center gap-1 text-[#FDE047] font-bold"
               title="Total Mastery XP"
             >
               <Award className="w-3.5 h-3.5" />
@@ -480,41 +441,15 @@ export function DeskHeader() {
             </span>
           </div>
 
-          {/* 👥 Study Squad Avatars */}
-          <div
-            className="hidden lg:flex items-center gap-1.5 bg-[#FDFBF7] border border-[#C8AE8D] rounded-xl px-2.5 py-1 shadow-xs"
-            title="Active Study Squad Peers"
-          >
-            <Users className="w-3.5 h-3.5 text-slate-600 mr-0.5" />
-            <div className="flex -space-x-1.5">
-              {SQUAD_MEMBERS.map((member) => (
-                <div
-                  key={member.name}
-                  title={`${member.name} — ${member.status}`}
-                  className={`w-6 h-6 rounded-full ${member.bg} text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-[#FDFBF7] shadow-xs cursor-default`}
-                >
-                  {member.initials}
-                </div>
-              ))}
-            </div>
-            <span className="text-[11px] font-medium text-slate-600 ml-1">
-              3 Peer Owls
-            </span>
-          </div>
-
-          {/* Audio Synthesizer Toggle */}
+          {/* Audio Toggle */}
           <button
             id="toggle-chiptune-audio-btn"
             onClick={toggleMute}
-            title={
-              audioMuted
-                ? 'Unmute Barnaby 8-Bit Chiptune Voice'
-                : 'Mute Barnaby 8-Bit Chiptune Voice'
-            }
+            title={audioMuted ? 'Unmute Desk Sound' : 'Mute Desk Sound'}
             className={`p-2 rounded-xl border transition-colors cursor-pointer ${
               audioMuted
                 ? 'bg-slate-200 border-slate-300 text-slate-600'
-                : 'bg-[#FDFBF7] border-[#C8AE8D] text-[#1A2E26] hover:bg-[#F5EBE0]'
+                : 'bg-[#FDFBF7] border-[#B89972] text-[#1A2E26] hover:bg-[#F5EBE0]'
             }`}
           >
             {audioMuted ? (
@@ -524,178 +459,276 @@ export function DeskHeader() {
             )}
           </button>
 
-          {/* 3-Key Rotator & BYOS .desk Vault Button */}
+          {/* Classroom Vault, Keys & Study Squad Button */}
           <button
             id="open-desk-vault-btn"
+            type="button"
+            title="Desk Locker: Keys, Saves & Squad"
+            aria-label="Open Desk Locker"
             onClick={() => {
               setKeySlots(geminiRotator.getTelemetry().slots);
               setShowVaultModal(true);
+              chiptuneAudio.playMenuSlash();
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#1A2E26] hover:bg-[#243F35] text-[#FDFBF7] text-xs font-semibold border border-[#3E2723] shadow-sm transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#1A2E26] hover:bg-[#243F35] text-[#FDFBF7] text-xs font-bold border border-[#1E293B] shadow-[2px_2px_0px_#FDE047] transition-all cursor-pointer"
           >
             <KeyRound className="w-3.5 h-3.5 text-[#FDE047]" />
-            <span className="hidden md:inline">3-Key &amp; .desk Vault</span>
+            <span className="hidden lg:inline">Desk Locker</span>
           </button>
         </div>
       </div>
 
       {/* Toast Notification */}
-      {archiveToast && (
-        <div className="fixed bottom-5 right-5 z-50 bg-[#1A2E26] text-[#FDFBF7] border-2 border-[#10B981] px-4 py-2.5 rounded-xl shadow-xl flex items-center gap-2 text-xs font-medium">
-          <CheckCircle2 className="w-4 h-4 text-[#10B981]" />
-          {archiveToast}
-        </div>
-      )}
+      <AnimatePresence>
+        {archiveToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 16, x: 16 }}
+            animate={{ opacity: 1, y: 0, x: 0 }}
+            exit={{ opacity: 0, y: 16 }}
+            className="fixed bottom-5 right-5 z-50 bg-[#1A2E26] text-[#FDFBF7] border-2 border-[#10B981] px-4 py-2.5 rounded-xl shadow-xl flex items-center gap-2 text-xs font-medium"
+          >
+            <CheckCircle2 className="w-4 h-4 text-[#10B981]" />
+            {archiveToast}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* 3-Key Gemini Rotator + BYOS Storage Adapter Modal */}
-      {showVaultModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="workbook-paper-surface border-2 border-[#8D6E63] rounded-2xl max-w-2xl w-full p-6 shadow-2xl text-[#1E293B] space-y-5 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-              <div>
-                <h2 className="text-lg font-bold font-serif flex items-center gap-2">
-                  <KeyRound className="w-5 h-5 text-[#1A2E26]" />
-                  Gemini 3-Key Rotator &amp; Local-First BYOS Vault
-                </h2>
-                <p className="text-xs text-slate-600">
-                  Round-robin API key failover (429/500 resilience) + IndexedDB/WebOPFS &amp; zero-cloud .desk archives
-                </p>
+      {/* Classroom Locker Modal (3-Key Pool, .desk Backups, & Study Squad) */}
+      <AnimatePresence>
+        {showVaultModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/55 backdrop-blur-xs flex items-center justify-center p-4"
+            onClick={() => setShowVaultModal(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, skewX: -3, y: 16 }}
+              animate={{ opacity: 1, scale: 1, skewX: 0, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 12 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              onClick={(e) => e.stopPropagation()}
+              className="workbook-paper-surface border-2 border-[#1E293B] rounded-2xl max-w-2xl w-full p-6 shadow-[8px_8px_0px_#1E293B] text-[#1E293B] space-y-5 max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between border-b border-[#D4B996] pb-3">
+                <div>
+                  <h2 className="text-lg font-bold font-serif flex items-center gap-2">
+                    <KeyRound className="w-5 h-5 text-[#1A2E26]" />
+                    Classroom Locker: Keys, Saves &amp; Squad
+                  </h2>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Keep your physical study desk clutter-free by storing setup tools inside your locker.
+                  </p>
+                </div>
+                <button
+                  id="close-desk-vault-btn"
+                  onClick={() => setShowVaultModal(false)}
+                  aria-label="Close Classroom Locker"
+                  className="p-1.5 rounded-lg bg-[#E6D5B8] hover:bg-[#D4B996] text-[#1E293B] cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <button
-                id="close-desk-vault-btn"
-                onClick={() => setShowVaultModal(false)}
-                className="px-3 py-1 rounded-lg bg-slate-200 hover:bg-slate-300 text-xs font-semibold cursor-pointer"
-              >
-                Close
-              </button>
-            </div>
 
-            {/* Section 1: 3-Key Rotator Status */}
-            <div className="space-y-3">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                1. Gemini 2.0 Flash 3-Key Pool Telemetry (/lib/gemini.ts)
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                {keySlots.map((slot, idx) => (
-                  <div
-                    key={slot.id}
-                    className="p-3 rounded-xl bg-[#F5EBE0] border border-[#D4B996] space-y-1.5"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono text-xs font-bold text-[#1A2E26]">
-                        {slot.id}
-                      </span>
-                      <span
-                        className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-semibold ${
-                          slot.configured
-                            ? 'bg-[#10B981]/20 text-[#065F46]'
-                            : 'bg-[#F59E0B]/20 text-[#92400E]'
-                        }`}
-                      >
-                        {slot.configured ? 'LIVE KEY' : 'SIMULATED FALLBACK'}
-                      </span>
-                    </div>
-                    <p className="text-[10px] font-mono text-slate-500 truncate">
-                      {slot.envName}
-                    </p>
-                    <div className="text-[11px] flex items-center justify-between text-slate-700 pt-1">
-                      <span>Turns Routed:</span>
-                      <span className="font-mono font-bold">
-                        {slot.requestCount}
-                      </span>
-                    </div>
-                    <input
-                      type="password"
-                      placeholder={`Override ${slot.id} (optional)`}
-                      value={customKeyInputs[idx]}
-                      onChange={(e) => {
-                        const next: [string, string, string] = [
-                          ...customKeyInputs,
-                        ] as [string, string, string];
-                        next[idx] = e.target.value;
-                        setCustomKeyInputs(next);
-                      }}
-                      className="w-full mt-1 px-2 py-1 text-xs bg-white border border-slate-300 rounded font-mono"
-                    />
-                  </div>
-                ))}
-              </div>
-              <button
-                id="apply-custom-gemini-keys-btn"
-                onClick={handleApplyKeys}
-                className="px-3.5 py-1.5 rounded-lg bg-[#1A2E26] text-white text-xs font-semibold hover:bg-[#243F35] cursor-pointer"
-              >
-                Save Runtime API Keys to Rotator Pool
-              </button>
-            </div>
-
-            {/* Section 2: BYOS Storage Providers & .desk Archive */}
-            <div className="space-y-3 pt-2 border-t border-slate-200">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                <HardDrive className="w-3.5 h-3.5" />
-                2. Storage Adapter (/lib/storage/) &amp; Zero-Cloud .desk Archives
-              </h3>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {/* Clean Persona Skewed Locker Sub-Tabs */}
+              <div className="flex items-center gap-1.5 bg-[#E6D5B8]/70 p-1 rounded-xl border border-[#C8AE8D]">
                 {(
                   [
-                    { id: 'local-dexie', label: 'Dexie + WebOPFS' },
-                    { id: 'google-drive', label: 'Google Drive API' },
-                    { id: 'onedrive', label: 'OneDrive Graph' },
-                    { id: 'dropbox', label: 'Dropbox Vault' },
+                    { id: 'keys', label: 'Gemini 3-Key Rotator' },
+                    { id: 'archive', label: '.desk Save & Storage' },
+                    { id: 'squad', label: 'Study Squad (3 Peers)' },
                   ] as const
-                ).map((prov) => {
-                  const active = activeStorageProvider === prov.id;
+                ).map((t) => {
+                  const active = vaultTab === t.id;
                   return (
                     <button
-                      key={prov.id}
+                      key={t.id}
                       onClick={() => {
-                        storageAdapter.toggleCloudConnection(prov.id);
-                        setActiveStorageProvider(storageAdapter.getProvider());
+                        if (vaultTab === t.id) return;
+                        setVaultTab(t.id);
+                        chiptuneAudio.playMenuSlash();
                       }}
-                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      className={`relative flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                         active
-                          ? 'bg-[#1A2E26] text-white border-[#1A2E26]'
-                          : 'bg-white border-slate-300 text-slate-700 hover:bg-[#F5EBE0]'
+                          ? 'text-[#FDFBF7]'
+                          : 'text-slate-700 hover:text-[#1E293B]'
                       }`}
                     >
-                      <div className="text-xs font-bold">{prov.label}</div>
-                      <div className="text-[10px] opacity-80 mt-0.5">
-                        {active ? 'Active Adapter' : 'Click to mount'}
-                      </div>
+                      {active && (
+                        <motion.span
+                          layoutId="vault-subtab-pill"
+                          transition={{
+                            type: 'spring',
+                            stiffness: 430,
+                            damping: 30,
+                          }}
+                          className="absolute inset-0 bg-[#1A2E26] rounded-lg -skew-x-6 shadow-[2px_2px_0px_#FDE047]"
+                        />
+                      )}
+                      <span className="relative z-10">{t.label}</span>
                     </button>
                   );
                 })}
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 pt-2">
-                <button
-                  id="export-desk-archive-btn"
-                  onClick={handleExportDesk}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#10B981] hover:bg-[#059669] text-white text-xs font-bold shadow-sm cursor-pointer"
-                >
-                  <Download className="w-4 h-4" />
-                  Export Zero-Cloud Archive (.desk)
-                </button>
-                <button
-                  id="import-desk-archive-btn"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#F5EBE0] hover:bg-[#E6D5B8] text-[#1E293B] border border-[#C8AE8D] text-xs font-bold cursor-pointer"
-                >
-                  <Upload className="w-4 h-4" />
-                  Import .desk Snapshot
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".desk,.json"
-                  onChange={handleImportDesk}
-                  className="hidden"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+              <PersonaMenuStage stageKey={vaultTab}>
+                {vaultTab === 'keys' && (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      {keySlots.map((slot, idx) => (
+                        <div
+                          key={slot.id}
+                          className="p-3 rounded-xl bg-[#F5EBE0] border border-[#D4B996] space-y-1.5"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono text-xs font-bold text-[#1A2E26]">
+                              {slot.id}
+                            </span>
+                            <span
+                              className={`text-xs font-mono px-1.5 py-0.5 rounded font-semibold ${
+                                slot.configured
+                                  ? 'bg-[#10B981]/20 text-[#065F46]'
+                                  : 'bg-[#F59E0B]/20 text-[#92400E]'
+                              }`}
+                            >
+                              {slot.configured ? 'LIVE' : 'FALLBACK'}
+                            </span>
+                          </div>
+                          <div className="text-xs flex items-center justify-between text-slate-700 pt-1">
+                            <span>Requests:</span>
+                            <span className="font-mono font-bold">
+                              {slot.requestCount}
+                            </span>
+                          </div>
+                          <input
+                            type="password"
+                            placeholder={`Override ${slot.id}`}
+                            value={customKeyInputs[idx]}
+                            onChange={(e) => {
+                              const next: [string, string, string] = [
+                                ...customKeyInputs,
+                              ] as [string, string, string];
+                              next[idx] = e.target.value;
+                              setCustomKeyInputs(next);
+                            }}
+                            className="w-full mt-1 px-2 py-1 text-xs bg-white border border-slate-300 rounded font-mono"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      id="apply-custom-gemini-keys-btn"
+                      onClick={handleApplyKeys}
+                      className="px-4 py-2 rounded-xl bg-[#1A2E26] text-white text-xs font-bold hover:bg-[#243F35] cursor-pointer"
+                    >
+                      Save Keys to Server/Client Rotator
+                    </button>
+                  </div>
+                )}
+
+                {vaultTab === 'archive' && (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {(
+                        [
+                          { id: 'local-dexie', label: 'Dexie + WebOPFS' },
+                          { id: 'google-drive', label: 'Google Drive' },
+                          { id: 'onedrive', label: 'OneDrive' },
+                          { id: 'dropbox', label: 'Dropbox' },
+                        ] as const
+                      ).map((prov) => {
+                        const active = activeStorageProvider === prov.id;
+                        return (
+                          <button
+                            key={prov.id}
+                            onClick={() => {
+                              storageAdapter.toggleCloudConnection(prov.id);
+                              setActiveStorageProvider(
+                                storageAdapter.getProvider()
+                              );
+                            }}
+                            className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                              active
+                                ? 'bg-[#1A2E26] text-white border-[#1A2E26]'
+                                : 'bg-white border-slate-300 text-slate-700 hover:bg-[#F5EBE0]'
+                            }`}
+                          >
+                            <div className="text-xs font-bold flex items-center gap-1">
+                              <HardDrive className="w-3.5 h-3.5" />
+                              {prov.label}
+                            </div>
+                            <div className="text-xs opacity-80 mt-0.5">
+                              {active ? 'Active' : 'Mount'}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3 pt-2">
+                      <button
+                        id="export-desk-archive-btn"
+                        onClick={handleExportDesk}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#10B981] hover:bg-[#059669] text-white text-xs font-bold cursor-pointer"
+                      >
+                        <Download className="w-4 h-4" />
+                        Export Backup (.desk)
+                      </button>
+                      <button
+                        id="import-desk-archive-btn"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#F5EBE0] hover:bg-[#E6D5B8] text-[#1E293B] border border-[#C8AE8D] text-xs font-bold cursor-pointer"
+                      >
+                        <Upload className="w-4 h-4" />
+                        Restore Backup (.desk)
+                      </button>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".desk,.json"
+                        onChange={handleImportDesk}
+                        className="hidden"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {vaultTab === 'squad' && (
+                  <div className="space-y-2.5">
+                    <p className="text-xs text-slate-600 flex items-center gap-1.5">
+                      <Users className="w-4 h-4 text-[#10B981]" />
+                      Study Squad classmates currently active in today&apos;s period:
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      {SQUAD_MEMBERS.map((member) => (
+                        <div
+                          key={member.name}
+                          className="p-3 rounded-xl bg-[#F5EBE0] border border-[#D4B996] flex items-center gap-2.5"
+                        >
+                          <div
+                            className={`w-9 h-9 rounded-full ${member.bg} text-white text-xs font-bold flex items-center justify-center shrink-0`}
+                          >
+                            {member.initials}
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-[#1E293B]">
+                              {member.name}
+                            </div>
+                            <div className="text-xs text-slate-600">
+                              {member.status}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </PersonaMenuStage>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </header>
   );
 }

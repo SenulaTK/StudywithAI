@@ -25,6 +25,17 @@ export type ActiveCallState =
   | 'SQUAD_LIVE';
 
 export type CameraPanTarget = 'overview' | 'left' | 'center' | 'right';
+export type WorkbookTab = 'lesson' | 'dialogue' | 'quiz';
+export type StudioTab = 'stickies' | 'simulation' | 'cornell';
+
+export type TransitionTheme = 'chalk' | 'sunshine' | 'crimson' | 'mint';
+
+export interface TransitionBannerState {
+  id: number;
+  kicker: string;
+  title: string;
+  theme: TransitionTheme;
+}
 
 export interface DiagnosticQuestion {
   id: string;
@@ -322,7 +333,7 @@ const INITIAL_ROADMAP: RoadmapTopicNode[] = [
         ],
         correctIndex: 0,
         socraticExplanation:
-          'Superb! You can verify this right now on the Right Panel Simulation Studio by dragging the Launch Angle slider between 30° and 60°.',
+          'Superb! You can verify this right now in the Live STEM Lab Simulation by dragging the Launch Angle slider between 30° and 60°.',
         xpReward: 85,
       },
     ],
@@ -611,8 +622,11 @@ interface StudyDeskStore {
   streakCount: number;
   activeCallState: ActiveCallState;
   cameraPan: CameraPanTarget;
+  workbookTab: WorkbookTab;
+  studioTab: StudioTab;
   tutorMode: TutorMode;
   audioMuted: boolean;
+  transitionBanner: TransitionBannerState | null;
   stickyNotes: StoredStickyNote[];
   backpackFiles: StoredBackpackFile[];
   cornellNotes: Record<string, StoredCornellNote>;
@@ -623,11 +637,19 @@ interface StudyDeskStore {
   setSyllabusBoard: (board: SyllabusBoard) => void;
   setActiveTopic: (topicId: string) => void;
   setTutorMode: (mode: TutorMode) => void;
+  setWorkbookTab: (tab: WorkbookTab) => void;
+  setStudioTab: (tab: StudioTab) => void;
   setActiveCallState: (state: ActiveCallState) => void;
   panToLeft: () => void;
   panToCenter: () => void;
   panToRight: () => void;
   panToOverview: () => void;
+  triggerTransition: (
+    kicker: string,
+    title: string,
+    theme: TransitionTheme
+  ) => void;
+  clearTransition: () => void;
   setAudioMuted: (muted: boolean) => void;
   awardXP: (amount: number) => void;
   unlockOrPromoteTopic: (topicId: string, nextBadge?: BadgeStatus) => void;
@@ -666,8 +688,11 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
   streakCount: 14,
   activeCallState: 'IDLE',
   cameraPan: 'overview',
+  workbookTab: 'lesson',
+  studioTab: 'stickies',
   tutorMode: 'socratic',
   audioMuted: false,
+  transitionBanner: null,
   stickyNotes: INITIAL_STICKY_NOTES,
   backpackFiles: INITIAL_BACKPACK_FILES,
   cornellNotes: {
@@ -685,15 +710,38 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
   },
   workbookDialogues: {},
 
+  triggerTransition: (kicker, title, theme) =>
+    set({
+      transitionBanner: {
+        id: Date.now(),
+        kicker,
+        title,
+        theme,
+      },
+    }),
+
+  clearTransition: () => set({ transitionBanner: null }),
+
   setSubject: (subject) => {
     const matchingTopics = get().roadmapState.filter(
       (t) => t.subject === subject
     );
     const firstUnlocked =
       matchingTopics.find((t) => t.status !== 'LOCKED') || matchingTopics[0];
+    const themeMap: Record<SubjectName, TransitionTheme> = {
+      Mathematics: 'sunshine',
+      Physics: 'chalk',
+      Chemistry: 'mint',
+    };
     set({
       currentSubject: subject,
       activeTopicId: firstUnlocked ? firstUnlocked.id : get().activeTopicId,
+      transitionBanner: {
+        id: Date.now(),
+        kicker: `SUBJECT PERIOD // ${get().syllabusBoard}`,
+        title: subject.toUpperCase(),
+        theme: themeMap[subject],
+      },
     });
   },
 
@@ -706,13 +754,51 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
   },
 
   setTutorMode: (mode) => set({ tutorMode: mode }),
+  setWorkbookTab: (tab) => set({ workbookTab: tab }),
+  setStudioTab: (tab) => set({ studioTab: tab }),
 
   setActiveCallState: (state) => set({ activeCallState: state }),
 
-  panToLeft: () => set({ cameraPan: 'left' }),
-  panToCenter: () => set({ cameraPan: 'center' }),
-  panToRight: () => set({ cameraPan: 'right' }),
-  panToOverview: () => set({ cameraPan: 'overview' }),
+  panToLeft: () =>
+    set({
+      cameraPan: 'left',
+      transitionBanner: {
+        id: Date.now(),
+        kicker: 'CLASSROOM STATION 02',
+        title: 'CHALKBOARD ROADMAP',
+        theme: 'chalk',
+      },
+    }),
+  panToCenter: () =>
+    set({
+      cameraPan: 'center',
+      transitionBanner: {
+        id: Date.now(),
+        kicker: 'CLASSROOM STATION 03',
+        title: 'OPEN WORKBOOK',
+        theme: 'crimson',
+      },
+    }),
+  panToRight: () =>
+    set({
+      cameraPan: 'right',
+      transitionBanner: {
+        id: Date.now(),
+        kicker: 'CLASSROOM STATION 04',
+        title: 'LAB & RECALL STUDIO',
+        theme: 'sunshine',
+      },
+    }),
+  panToOverview: () =>
+    set({
+      cameraPan: 'overview',
+      transitionBanner: {
+        id: Date.now(),
+        kicker: 'CLASSROOM STATION 01',
+        title: 'FULL STUDY DESK',
+        theme: 'mint',
+      },
+    }),
 
   setAudioMuted: (muted) => set({ audioMuted: muted }),
 
@@ -791,10 +877,6 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
       userXP: state.userXP + 25,
     })),
 
-  /**
-   * Updates sticky note mastery and applies SM-2 Spaced Repetition interval scheduling,
-   * dynamically syncing `spacedDue` and `weakPoint` telemetry onto the parent Roadmap topic node.
-   */
   updateStickyMastery: (id, status) =>
     set((state) => {
       const now = Date.now();

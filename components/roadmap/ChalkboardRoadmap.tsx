@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Lock,
   Unlock,
@@ -9,12 +10,10 @@ import {
   Upload,
   FileText,
   Trash2,
-  AlertTriangle,
-  Clock,
-  CheckCircle2,
   FolderOpen,
+  ChevronDown,
+  ChevronUp,
   Sparkles,
-  GraduationCap,
 } from 'lucide-react';
 import {
   useStudyDeskStore,
@@ -28,52 +27,45 @@ const BADGE_CONFIG: Record<
   BadgeStatus,
   {
     label: string;
-    bg: string;
-    border: string;
-    text: string;
+    cardStyle: string;
+    pillStyle: string;
     iconColor: string;
   }
 > = {
   LOCKED: {
-    label: 'Locked (Pass Previous Revision Test)',
-    bg: 'bg-slate-900/60',
-    border: 'border-slate-700',
-    text: 'text-slate-400',
+    label: 'Locked',
+    cardStyle: 'bg-slate-900/50 border-slate-700/80 opacity-65 cursor-not-allowed',
+    pillStyle: 'bg-slate-800 text-slate-400',
     iconColor: 'text-slate-500',
   },
   UNLOCKED: {
-    label: 'Unlocked • Ready for Mastery',
-    bg: 'bg-[#10B981]/15',
-    border: 'border-[#10B981]',
-    text: 'text-[#FDFBF7]',
+    label: 'Active',
+    cardStyle: 'bg-[#10B981]/15 border-[#10B981]/70 cursor-pointer hover:border-[#FDE047]',
+    pillStyle: 'bg-[#10B981]/25 text-emerald-200',
     iconColor: 'text-[#10B981]',
   },
   BRONZE: {
-    label: '🥉 Bronze Crown',
-    bg: 'bg-amber-900/30',
-    border: 'border-amber-600',
-    text: 'text-amber-100',
-    iconColor: 'text-amber-500',
+    label: '🥉 Bronze',
+    cardStyle: 'bg-amber-950/35 border-amber-600/70 cursor-pointer hover:border-[#FDE047]',
+    pillStyle: 'bg-amber-900/60 text-amber-200',
+    iconColor: 'text-amber-400',
   },
   SILVER: {
-    label: '🥈 Silver Crown',
-    bg: 'bg-slate-700/45',
-    border: 'border-slate-300',
-    text: 'text-slate-100',
+    label: '🥈 Silver',
+    cardStyle: 'bg-slate-800/60 border-slate-400/70 cursor-pointer hover:border-[#FDE047]',
+    pillStyle: 'bg-slate-700 text-slate-100',
     iconColor: 'text-slate-200',
   },
   GOLD: {
-    label: '🥇 Gold Crown',
-    bg: 'bg-yellow-500/20',
-    border: 'border-[#FDE047]',
-    text: 'text-[#FDE047]',
+    label: '🥇 Gold',
+    cardStyle: 'bg-yellow-500/15 border-[#FDE047]/80 cursor-pointer hover:border-[#FDE047]',
+    pillStyle: 'bg-[#FDE047]/20 text-[#FDE047]',
     iconColor: 'text-[#FDE047]',
   },
   DIAMOND: {
-    label: '💎 Diamond Mastery',
-    bg: 'bg-cyan-500/20',
-    border: 'border-cyan-300',
-    text: 'text-cyan-100',
+    label: '💎 Diamond',
+    cardStyle: 'bg-cyan-500/15 border-cyan-300/80 cursor-pointer hover:border-[#FDE047]',
+    pillStyle: 'bg-cyan-500/20 text-cyan-200',
     iconColor: 'text-cyan-300',
   },
 };
@@ -88,11 +80,11 @@ export function ChalkboardRoadmap() {
     streakCount,
     backpackFiles,
     setActiveTopic,
-    setActiveCallState,
     addBackpackFile,
     removeBackpackFile,
   } = useStudyDeskStore();
 
+  const [backpackOpen, setBackpackOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -104,7 +96,6 @@ export function ChalkboardRoadmap() {
     (f) => f.subject === currentSubject
   );
 
-  // Calculate level & progress bar
   const currentLevel = Math.floor(userXP / 500) + 1;
   const xpIntoLevel = userXP % 500;
   const levelProgressPct = Math.min(100, Math.round((xpIntoLevel / 500) * 100));
@@ -114,7 +105,6 @@ export function ChalkboardRoadmap() {
     const decoder = new TextDecoder('latin1');
     const raw = decoder.decode(buffer);
 
-    // Extract text literals inside PDF parenthesized string operators (...)
     const extractedTokens: string[] = [];
     const regex = /\(([^()\\]{3,200})\)/g;
     let match: RegExpExecArray | null;
@@ -205,10 +195,9 @@ export function ChalkboardRoadmap() {
     addBackpackFile(newFile);
     await storageAdapter.saveBackpackFiles([newFile, ...backpackFiles]);
     chiptuneAudio.playMasteryFanfare();
-    setUploadStatus(
-      `Chunked "${file.name}" (${chunks.length} semantic RAG passages linked to Barnaby)`
-    );
-    setTimeout(() => setUploadStatus(null), 4000);
+    setBackpackOpen(true);
+    setUploadStatus(`Added "${file.name}" (${chunks.length} passages)`);
+    setTimeout(() => setUploadStatus(null), 3500);
   };
 
   const handleSelectNode = (node: RoadmapTopicNode) => {
@@ -220,205 +209,139 @@ export function ChalkboardRoadmap() {
   return (
     <aside
       aria-label="Left Panel: Chalkboard Scheme of Work Roadmap"
-      className="chalkboard-surface rounded-2xl border-4 border-[#4E342E] p-4 text-[#F1F5F9] flex flex-col justify-between h-full min-h-[760px]"
+      className="flex flex-col h-full rounded-2xl overflow-hidden border-4 border-[#4E342E] shadow-[0_12px_28px_-6px_rgba(30,41,59,0.22)]"
     >
-      <div className="space-y-4">
-        {/* Chalkboard Header */}
-        <div className="flex items-center justify-between border-b border-emerald-900/80 pb-3">
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-[#10B981]" />
-              <span className="text-[11px] font-mono uppercase tracking-widest text-[#10B981] font-bold">
-                {syllabusBoard} Scheme of Work
+      <div className="chalkboard-surface p-4 text-[#F1F5F9] flex-1 flex flex-col justify-between gap-4">
+        <div className="space-y-4">
+          {/* Chalkboard Header */}
+          <div className="flex items-center justify-between border-b border-emerald-800/70 pb-3">
+            <div>
+              <span className="text-xs font-mono uppercase tracking-wider text-[#10B981] font-bold block">
+                {syllabusBoard} Curriculum
               </span>
+              <h2 className="text-lg font-bold font-serif text-[#FDFBF7]">
+                {currentSubject} Syllabus
+              </h2>
             </div>
-            <h2 className="text-base font-bold font-serif text-[#FDFBF7] mt-0.5">
-              {currentSubject} Skill Tree
-            </h2>
-          </div>
-
-          <div className="text-right font-mono">
-            <span className="text-[10px] text-slate-300 block">
-              Mastered Nodes
-            </span>
-            <span className="text-xs font-bold text-[#FDE047]">
+            <span className="px-2.5 py-1 rounded-lg bg-black/30 border border-emerald-800 text-xs font-mono font-bold text-[#FDE047]">
               {
                 subjectNodes.filter(
                   (n) => n.status !== 'LOCKED' && n.status !== 'UNLOCKED'
                 ).length
-              }{' '}
-              / {subjectNodes.length} Crowns
+              }
+              /{subjectNodes.length} Crowns
             </span>
           </div>
-        </div>
 
-        {/* Daily Streaks & XP Mastery Bar */}
-        <div className="rounded-xl bg-black/25 border border-emerald-800/60 p-3 space-y-2">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-semibold flex items-center gap-1.5 text-[#FDE047]">
-              <Crown className="w-4 h-4 text-[#FDE047]" />
-              Scholar Lv.{currentLevel}
-            </span>
-            <span className="font-mono text-[11px] text-[#F59E0B] flex items-center gap-1">
-              <Flame className="w-3.5 h-3.5 fill-[#F59E0B]" />
-              {streakCount}-Day Active Streak
-            </span>
-          </div>
-          <div className="w-full h-2.5 rounded-full bg-slate-900 overflow-hidden p-0.5 border border-emerald-900">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-[#10B981] via-[#FDE047] to-[#F59E0B] transition-all duration-500"
-              style={{ width: `${levelProgressPct}%` }}
-            />
-          </div>
-          <div className="flex items-center justify-between text-[10px] font-mono text-slate-300">
-            <span>{userXP.toLocaleString()} Total XP</span>
-            <span>{500 - xpIntoLevel} XP to Lv.{currentLevel + 1}</span>
-          </div>
-        </div>
-
-        {/* Mastery Legend Pills */}
-        <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono">
-          <span className="px-2 py-0.5 rounded-md bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/40">
-            ● Mastered/Unlocked
-          </span>
-          <span className="px-2 py-0.5 rounded-md bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40">
-            ● Spaced Due
-          </span>
-          <span className="px-2 py-0.5 rounded-md bg-[#EF4444]/20 text-[#EF4444] border border-[#EF4444]/40">
-            ● Weak Point
-          </span>
-        </div>
-
-        {/* Sequential Skill Tree Nodes */}
-        <div className="space-y-3 relative before:absolute before:left-5 before:top-4 before:bottom-4 before:w-0.5 before:bg-emerald-700/50">
-          {subjectNodes.map((node) => {
-            const cfg = BADGE_CONFIG[node.status];
-            const isSelected = node.id === activeTopicId;
-            const isLocked = node.status === 'LOCKED';
-
-            return (
+          {/* Clean Scholar XP & Streak Bar */}
+          <div className="space-y-1.5 px-1">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-[#FDE047] flex items-center gap-1.5">
+                <Crown className="w-3.5 h-3.5" />
+                Level {currentLevel} Scholar
+              </span>
+              <span className="font-mono text-[#F59E0B] flex items-center gap-1 font-semibold">
+                <Flame className="w-3.5 h-3.5 fill-[#F59E0B]" />
+                {streakCount}d Streak
+              </span>
+            </div>
+            <div className="w-full h-2.5 rounded-full bg-black/40 overflow-hidden border border-emerald-900">
               <div
-                key={node.id}
-                id={`roadmap-node-${node.id}`}
-                onClick={() => handleSelectNode(node)}
-                role="button"
-                tabIndex={isLocked ? -1 : 0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    handleSelectNode(node);
-                  }
-                }}
-                className={`relative z-10 rounded-xl border-2 p-3 transition-all ${
-                  cfg.bg
-                } ${
-                  isSelected
-                    ? 'border-[#FDE047] ring-2 ring-[#FDE047]/40 translate-x-1 shadow-lg'
-                    : cfg.border
-                } ${
-                  isLocked
-                    ? 'opacity-65 cursor-not-allowed'
-                    : 'cursor-pointer hover:translate-x-1 hover:border-[#FDE047]/80'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-start gap-2.5">
-                    <div
-                      className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 bg-black/40 border border-white/15 ${cfg.iconColor}`}
-                    >
-                      {isLocked ? (
-                        <Lock className="w-3.5 h-3.5" />
-                      ) : node.status === 'UNLOCKED' ? (
-                        <Unlock className="w-3.5 h-3.5" />
-                      ) : (
-                        <Crown className="w-3.5 h-3.5" />
-                      )}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-black/40 text-emerald-300">
-                          {node.code}
-                        </span>
-                        <span
-                          className={`text-[10px] font-mono font-semibold ${cfg.text}`}
-                        >
-                          {cfg.label}
-                        </span>
-                      </div>
-                      <h3 className="text-xs sm:text-sm font-bold text-[#FDFBF7] mt-1">
-                        {node.title}
-                      </h3>
-                      <p className="text-[11px] text-slate-300 leading-snug mt-0.5">
-                        {node.subtitle}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Mastery Telemetry Flags (Spaced Due / Weak Point / Revision Test Trigger) */}
-                <div className="mt-2.5 pt-2 border-t border-white/10 flex flex-wrap items-center justify-between gap-1.5">
-                  <div className="flex items-center gap-1.5">
-                    {node.spacedDue && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#F59E0B]/25 text-[#FDE047] border border-[#F59E0B]/50">
-                        <Clock className="w-2.5 h-2.5" />
-                        Spaced Due
-                      </span>
-                    )}
-                    {node.weakPoint && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#EF4444]/25 text-red-200 border border-[#EF4444]/50">
-                        <AlertTriangle className="w-2.5 h-2.5" />
-                        Weak Point
-                      </span>
-                    )}
-                    {!node.spacedDue && !node.weakPoint && !isLocked && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-mono text-[#10B981]">
-                        <CheckCircle2 className="w-3 h-3" />
-                        Retention 96%
-                      </span>
-                    )}
-                  </div>
-
-                  {!isLocked && (
-                    <button
-                      id={`revision-test-trigger-${node.id}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setActiveTopic(node.id);
-                        setActiveCallState('REVISION_TEST');
-                        chiptuneAudio.playPaperFlip();
-                      }}
-                      className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-[#FDE047]/20 hover:bg-[#FDE047]/35 text-[#FDE047] border border-[#FDE047]/40 transition-colors cursor-pointer"
-                    >
-                      <GraduationCap className="w-3 h-3" />
-                      Revision Test
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Bottom: RAG Backpack File Drawer */}
-      <div className="mt-5 pt-4 border-t border-emerald-800/80 space-y-2.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <FolderOpen className="w-4 h-4 text-[#FDE047]" />
-            <h3 className="text-xs font-bold uppercase tracking-wider text-[#FDFBF7]">
-              RAG Backpack File Drawer
-            </h3>
+                className="h-full rounded-full bg-gradient-to-r from-[#10B981] to-[#FDE047] transition-all duration-500"
+                style={{ width: `${levelProgressPct}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between text-xs font-mono text-slate-300">
+              <span>{userXP.toLocaleString()} XP</span>
+              <span>{500 - xpIntoLevel} XP to next level</span>
+            </div>
           </div>
-          <span className="text-[10px] font-mono text-[#10B981]">
-            {subjectFiles.length} Context Docs
-          </span>
+
+          {/* Streamlined Sequential Skill Tree */}
+          <div className="space-y-2.5">
+            {subjectNodes.map((node, index) => {
+              const cfg = BADGE_CONFIG[node.status];
+              const isSelected = node.id === activeTopicId;
+              const isLocked = node.status === 'LOCKED';
+
+              return (
+                <motion.div
+                  key={node.id}
+                  id={`roadmap-node-${node.id}`}
+                  initial={{ opacity: 0, x: -16 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{
+                    duration: 0.22,
+                    delay: index * 0.05,
+                    ease: [0.22, 1, 0.36, 1],
+                  }}
+                  onClick={() => handleSelectNode(node)}
+                  role="button"
+                  tabIndex={isLocked ? -1 : 0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      handleSelectNode(node);
+                    }
+                  }}
+                  className={`rounded-xl border-2 p-3 transition-all ${cfg.cardStyle} ${
+                    isSelected
+                      ? 'border-[#FDE047] bg-[#1E3A2F] shadow-[3px_3px_0px_#FDE047] translate-x-1'
+                      : ''
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`${cfg.iconColor}`}>
+                        {isLocked ? (
+                          <Lock className="w-4 h-4" />
+                        ) : node.status === 'UNLOCKED' ? (
+                          <Unlock className="w-4 h-4" />
+                        ) : (
+                          <Crown className="w-4 h-4" />
+                        )}
+                      </span>
+                      <span className="text-xs font-mono font-bold text-emerald-300">
+                        {node.code}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      {node.spacedDue && (
+                        <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-[#F59E0B]/25 text-[#FDE047]">
+                          Review Due
+                        </span>
+                      )}
+                      {node.weakPoint && (
+                        <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-[#EF4444]/25 text-red-200">
+                          Practice
+                        </span>
+                      )}
+                      <span
+                        className={`text-xs font-mono font-semibold px-2 py-0.5 rounded ${cfg.pillStyle}`}
+                      >
+                        {cfg.label}
+                      </span>
+                    </div>
+                  </div>
+
+                  <h3 className="text-sm font-bold text-[#FDFBF7] mt-1.5 leading-snug">
+                    {node.title}
+                  </h3>
+                  <p className="text-xs text-slate-300 mt-0.5 line-clamp-1">
+                    {node.subtitle}
+                  </p>
+                </motion.div>
+              );
+            })}
+          </div>
         </div>
 
-        {/* Drag-and-Drop Upload Zone */}
+        {/* Collapsible RAG Backpack Drawer (Keeps Chalkboard Uncluttered) */}
         <div
-          id="rag-backpack-dropzone"
           onDragOver={(e) => {
             e.preventDefault();
             setIsDragging(true);
+            setBackpackOpen(true);
           }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={(e) => {
@@ -426,64 +349,100 @@ export function ChalkboardRoadmap() {
             setIsDragging(false);
             processUploadedFiles(e.dataTransfer.files);
           }}
-          onClick={() => fileInputRef.current?.click()}
-          className={`rounded-xl border-2 border-dashed p-3 text-center transition-all cursor-pointer ${
-            isDragging
-              ? 'border-[#FDE047] bg-[#10B981]/20'
-              : 'border-emerald-700/80 bg-black/20 hover:border-[#10B981] hover:bg-black/30'
-          }`}
+          className="pt-3 border-t border-emerald-800/70"
         >
-          <Upload className="w-4 h-4 text-[#10B981] mx-auto mb-1" />
-          <p className="text-[11px] font-medium text-slate-200">
-            Drop PDFs, Class Notes, or Video Transcripts
-          </p>
-          <p className="text-[10px] text-slate-400 mt-0.5">
-            Auto-chunks text into Professor Barnaby&apos;s Gemini RAG context
-          </p>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.txt,.md,.json,.csv"
-            onChange={(e) => processUploadedFiles(e.target.files)}
-            className="hidden"
-          />
-        </div>
+          <button
+            type="button"
+            onClick={() => {
+              setBackpackOpen(!backpackOpen);
+              chiptuneAudio.playPaperFlip();
+            }}
+            className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-black/25 hover:bg-black/35 border border-emerald-800/80 text-xs font-bold text-[#FDFBF7] cursor-pointer transition-colors"
+          >
+            <span className="flex items-center gap-2">
+              <FolderOpen className="w-4 h-4 text-[#FDE047]" />
+              Class Notes Backpack ({subjectFiles.length})
+            </span>
+            {backpackOpen ? (
+              <ChevronUp className="w-4 h-4 text-slate-300" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-slate-300" />
+            )}
+          </button>
 
-        {uploadStatus && (
-          <div className="p-2 rounded-lg bg-[#10B981]/20 border border-[#10B981] text-[11px] text-emerald-100 flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-[#FDE047] shrink-0" />
-            <span>{uploadStatus}</span>
-          </div>
-        )}
-
-        {/* Uploaded RAG Files List */}
-        <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-          {subjectFiles.map((file) => (
-            <div
-              key={file.id}
-              className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-black/30 border border-white/10 text-xs"
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                <FileText className="w-3.5 h-3.5 text-[#FDE047] shrink-0" />
-                <div className="truncate">
-                  <p className="text-[11px] font-medium text-slate-100 truncate">
-                    {file.name}
-                  </p>
-                  <p className="text-[9px] font-mono text-emerald-300">
-                    {file.chunks.length} chunks • {(file.sizeBytes / 1024).toFixed(1)} KB
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => removeBackpackFile(file.id)}
-                title="Remove from RAG Backpack"
-                className="p-1 text-slate-400 hover:text-[#EF4444] transition-colors cursor-pointer"
+          <AnimatePresence>
+            {backpackOpen && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden pt-2.5 space-y-2"
               >
-                <Trash2 className="w-3 h-3" />
-              </button>
-            </div>
-          ))}
+                <div
+                  id="rag-backpack-dropzone"
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`rounded-xl border-2 border-dashed p-3 text-center transition-all cursor-pointer ${
+                    isDragging
+                      ? 'border-[#FDE047] bg-[#10B981]/20'
+                      : 'border-emerald-700/80 bg-black/20 hover:border-[#10B981]'
+                  }`}
+                >
+                  <Upload className="w-4 h-4 text-[#10B981] mx-auto mb-1" />
+                  <p className="text-xs font-medium text-slate-200">
+                    Upload PDF or Notes for Barnaby
+                  </p>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.txt,.md,.json,.csv"
+                    onChange={(e) => processUploadedFiles(e.target.files)}
+                    className="hidden"
+                  />
+                </div>
+
+                {uploadStatus && (
+                  <div className="p-2 rounded-lg bg-[#10B981]/20 border border-[#10B981] text-xs text-emerald-100 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-[#FDE047] shrink-0" />
+                    <span>{uploadStatus}</span>
+                  </div>
+                )}
+
+                <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                  {subjectFiles.map((file) => (
+                    <div
+                      key={file.id}
+                      className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-black/30 border border-white/10 text-xs"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileText className="w-3.5 h-3.5 text-[#FDE047] shrink-0" />
+                        <span className="truncate text-slate-100">
+                          {file.name}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => removeBackpackFile(file.id)}
+                        title="Remove file"
+                        className="p-1 text-slate-400 hover:text-[#EF4444] cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
+      </div>
+
+      {/* Authentic Classroom Wooden Chalk Ledge with Chalk Sticks */}
+      <div
+        aria-hidden="true"
+        className="chalkboard-wood-ledge h-3.5 px-6 flex items-center justify-end gap-3"
+      >
+        <span className="w-7 h-1.5 rounded-xs bg-[#F8FAFC] shadow-xs rotate-2" />
+        <span className="w-5 h-1.5 rounded-xs bg-[#FDE047] shadow-xs -rotate-3" />
       </div>
     </aside>
   );

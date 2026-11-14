@@ -54,9 +54,8 @@ class ChiptuneAudioEngine {
       osc.frequency.setValueAtTime(baseFreq, now);
       osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.06, now + 0.032);
 
-      // Soft envelope so it feels tactile and cozy rather than harsh
       gain.gain.setValueAtTime(0.001, now);
-      gain.gain.linearRampToValueAtTime(0.028, now + 0.006);
+      gain.gain.linearRampToValueAtTime(0.025, now + 0.006);
       gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.038);
 
       osc.connect(gain);
@@ -83,8 +82,8 @@ class ChiptuneAudioEngine {
       const gain = ctx.createGain();
 
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(320, now);
-      osc.frequency.exponentialRampToValueAtTime(640, now + 0.055);
+      osc.frequency.setValueAtTime(340, now);
+      osc.frequency.exponentialRampToValueAtTime(680, now + 0.055);
 
       gain.gain.setValueAtTime(0.001, now);
       gain.gain.linearRampToValueAtTime(0.035, now + 0.01);
@@ -95,6 +94,82 @@ class ChiptuneAudioEngine {
 
       osc.start(now);
       osc.stop(now + 0.07);
+    } catch {
+      // Ignore
+    }
+  }
+
+  /**
+   * Snappy Persona-inspired dramatic menu slash chime when transitioning between primary stations.
+   */
+  public playMenuSlash() {
+    if (this.isMuted) return;
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+
+    try {
+      const now = ctx.currentTime;
+
+      // Swift upward sweep
+      const sweepOsc = ctx.createOscillator();
+      const sweepGain = ctx.createGain();
+      sweepOsc.type = 'triangle';
+      sweepOsc.frequency.setValueAtTime(240, now);
+      sweepOsc.frequency.exponentialRampToValueAtTime(980, now + 0.09);
+      sweepGain.gain.setValueAtTime(0.001, now);
+      sweepGain.gain.linearRampToValueAtTime(0.045, now + 0.015);
+      sweepGain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+      sweepOsc.connect(sweepGain);
+      sweepGain.connect(ctx.destination);
+      sweepOsc.start(now);
+      sweepOsc.stop(now + 0.12);
+
+      // Crisp harmonic snap accent
+      const snapOsc = ctx.createOscillator();
+      const snapGain = ctx.createGain();
+      snapOsc.type = 'sine';
+      snapOsc.frequency.setValueAtTime(880, now + 0.05);
+      snapOsc.frequency.exponentialRampToValueAtTime(1174.66, now + 0.15);
+      snapGain.gain.setValueAtTime(0.001, now + 0.05);
+      snapGain.gain.linearRampToValueAtTime(0.035, now + 0.065);
+      snapGain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+      snapOsc.connect(snapGain);
+      snapGain.connect(ctx.destination);
+      snapOsc.start(now + 0.05);
+      snapOsc.stop(now + 0.19);
+    } catch {
+      // Ignore
+    }
+  }
+
+  /**
+   * Warm 2-tone classroom bell chime when switching school subjects/periods.
+   */
+  public playSchoolBellChime() {
+    if (this.isMuted) return;
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+
+    try {
+      const notes = [659.25, 523.25]; // E5 -> C5 classic school chime
+      notes.forEach((freq, idx) => {
+        const start = ctx.currentTime + idx * 0.11;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, start);
+
+        gain.gain.setValueAtTime(0.001, start);
+        gain.gain.linearRampToValueAtTime(0.045, start + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0008, start + 0.24);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(start);
+        osc.stop(start + 0.25);
+      });
     } catch {
       // Ignore
     }
