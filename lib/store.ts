@@ -522,7 +522,7 @@ export const useStudyDeskStore = create<StudyDeskStore>((set, get) => ({
       transitionBanner: {
         id: Date.now(),
         kicker: 'STATION 02',
-        title: 'CHALKBOARD',
+        title: 'WHITEBOARD',
         theme: 'chalk',
       },
     }),

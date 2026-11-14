@@ -13,7 +13,7 @@ import {
   Upload,
   KeyRound,
   Columns3,
-  Map,
+  Presentation,
   BookOpenCheck,
   Sliders,
   Award,
@@ -40,7 +40,7 @@ const STATIONS: Array<{
   icon: React.ComponentType<{ className?: string }>;
 }> = [
   { id: 'overview', label: 'Study Desk', icon: Columns3 },
-  { id: 'left', label: 'Chalkboard', icon: Map },
+  { id: 'left', label: 'Whiteboard', icon: Presentation },
   { id: 'center', label: 'Workbook', icon: BookOpenCheck },
   { id: 'right', label: 'Notes & Graph', icon: Sliders },
 ];
@@ -353,8 +353,9 @@ export function DeskHeader() {
                         layoutId="subject-highlighter"
                         transition={{
                           type: 'spring',
-                          stiffness: 420,
-                          damping: 30,
+                          stiffness: 200,
+                          damping: 24,
+                          mass: 1.05,
                         }}
                         className="absolute inset-0 bg-[#FDE047] border border-[#1E293B] rounded-lg -skew-x-6 shadow-[2px_2px_0px_#1E293B]"
                       />
@@ -409,8 +410,9 @@ export function DeskHeader() {
                     layoutId="station-active-pill"
                     transition={{
                       type: 'spring',
-                      stiffness: 440,
-                      damping: 32,
+                      stiffness: 210,
+                      damping: 25,
+                      mass: 1.05,
                     }}
                     className="absolute inset-0 bg-[#1A2E26] border border-[#1E293B] rounded-lg -skew-x-6 shadow-[2px_2px_0px_#10B981]"
                   />
@@ -594,7 +596,7 @@ export function DeskHeader() {
               initial={{ opacity: 0, scale: 0.94, skewX: -2.5, y: 14 }}
               animate={{ opacity: 1, scale: 1, skewX: 0, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: 10 }}
-              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: 0.36, ease: [0.22, 1, 0.36, 1] }}
               onClick={(e) => e.stopPropagation()}
               className="workbook-paper-surface border-2 border-[#1E293B] rounded-2xl max-w-md w-full p-5 shadow-[8px_8px_0px_#1E293B] text-[#1E293B] space-y-4"
             >
@@ -678,6 +680,7 @@ export function DeskHeader() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
             className="fixed inset-0 z-50 bg-black/55 backdrop-blur-xs flex items-center justify-center p-4"
             onClick={() => setShowVaultModal(false)}
           >
@@ -685,7 +688,7 @@ export function DeskHeader() {
               initial={{ opacity: 0, scale: 0.94, skewX: -3, y: 16 }}
               animate={{ opacity: 1, scale: 1, skewX: 0, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: 12 }}
-              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
               onClick={(e) => e.stopPropagation()}
               className="workbook-paper-surface border-2 border-[#1E293B] rounded-2xl max-w-2xl w-full p-6 shadow-[8px_8px_0px_#1E293B] text-[#1E293B] space-y-5 max-h-[90vh] overflow-y-auto"
             >
@@ -740,8 +743,9 @@ export function DeskHeader() {
                           layoutId="vault-subtab-pill"
                           transition={{
                             type: 'spring',
-                            stiffness: 430,
-                            damping: 30,
+                            stiffness: 200,
+                            damping: 24,
+                            mass: 1.05,
                           }}
                           className="absolute inset-0 bg-[#1A2E26] rounded-lg -skew-x-6 shadow-[2px_2px_0px_#FDE047]"
                         />

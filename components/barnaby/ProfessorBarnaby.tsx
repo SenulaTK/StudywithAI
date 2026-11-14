@@ -183,7 +183,7 @@ export function ProfessorBarnaby({
             <Shirt className="w-3.5 h-3.5 text-[#5D4037]" />
             <span>Outfit</span>
             <ChevronDown
-              className={`w-3.5 h-3.5 transition-transform ${
+              className={`w-3.5 h-3.5 transition-transform duration-300 ${
                 outfitMenuOpen ? 'rotate-180' : ''
               }`}
             />
@@ -195,7 +195,7 @@ export function ProfessorBarnaby({
                 initial={{ opacity: 0, y: -6, skewX: -2 }}
                 animate={{ opacity: 1, y: 0, skewX: 0 }}
                 exit={{ opacity: 0, y: -4 }}
-                transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+                transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
                 className="absolute right-0 mt-1.5 w-52 z-30 rounded-xl bg-[#FDFBF7] border-2 border-[#1E293B] p-1.5 shadow-[4px_4px_0px_#1E293B] space-y-1"
               >
                 {(
@@ -638,7 +638,7 @@ export function ProfessorBarnaby({
               key={speechText.slice(0, 24)}
               initial={{ opacity: 0.75, scaleY: 0.94 }}
               animate={{ opacity: 1, scaleY: 1 }}
-              transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
               className="barnaby-scroll-surface relative rounded-xl border-2 border-[#C8AE8D] p-3.5 text-[#1E293B]"
             >
               {/* Scroll Header Bar */}

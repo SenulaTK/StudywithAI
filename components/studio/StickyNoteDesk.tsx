@@ -416,8 +416,9 @@ export function StickyNoteDesk() {
                     layoutId="studio-subtab-pill"
                     transition={{
                       type: 'spring',
-                      stiffness: 430,
-                      damping: 30,
+                      stiffness: 200,
+                      damping: 24,
+                      mass: 1.05,
                     }}
                     className="absolute inset-0 bg-[#FDE047] border-2 border-[#1E293B] rounded-lg -skew-x-6 shadow-[2px_2px_0px_#1E293B]"
                   />
@@ -552,7 +553,7 @@ export function StickyNoteDesk() {
                           className={`perspective-1200 h-48 cursor-pointer select-none transition-transform duration-300 hover:scale-[1.03] hover:-translate-y-1 ${note.rotationClass}`}
                         >
                           <div
-                            className={`relative w-full h-full duration-500 preserve-3d transition-transform ${
+                            className={`relative w-full h-full duration-700 preserve-3d transition-transform ${
                               isFlipped ? 'rotate-y-180' : ''
                             }`}
                           >

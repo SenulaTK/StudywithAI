@@ -512,8 +512,9 @@ export function WorkbookCanvas() {
                       layoutId="workbook-tutor-mode"
                       transition={{
                         type: 'spring',
-                        stiffness: 430,
-                        damping: 30,
+                        stiffness: 200,
+                        damping: 24,
+                        mass: 1.05,
                       }}
                       className="absolute inset-0 bg-[#1A2E26] rounded-lg -skew-x-6 shadow-[2px_2px_0px_#10B981]"
                     />
@@ -602,8 +603,8 @@ export function WorkbookCanvas() {
             </h3>
             <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
               {currentSubject
-                ? 'Use "+ Add Topic" on the left Chalkboard to add a chapter or exam module.'
-                : 'Create your first Subject Notebook on the left Chalkboard (or via "+ New Notebook" in the top bar) to unlock formulas, quizzes, and AI tutoring.'}
+                ? 'Use "+" on the left Whiteboard to add a chapter or exam module.'
+                : 'Create your first Subject Notebook on the left Whiteboard (or via "+ New Notebook" in the top bar) to unlock formulas, quizzes, and AI tutoring.'}
             </p>
           </div>
         ) : (
@@ -636,8 +637,9 @@ export function WorkbookCanvas() {
                         layoutId="workbook-subtab-pill"
                         transition={{
                           type: 'spring',
-                          stiffness: 420,
-                          damping: 30,
+                          stiffness: 200,
+                          damping: 24,
+                          mass: 1.05,
                         }}
                         className="absolute inset-0 bg-[#FDE047] border-2 border-[#1E293B] rounded-lg -skew-x-6 shadow-[3px_3px_0px_#1E293B]"
                       />

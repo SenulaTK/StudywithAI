@@ -74,6 +74,35 @@ body {
     0 4px 10px rgba(0, 0, 0, 0.32);
 }
 
+/* Classroom Magnetic Dry-Erase Whiteboard Surface */
+.whiteboard-surface {
+  background-color: #FFFFFF;
+  background-image:
+    radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.95) 0%, transparent 56%),
+    radial-gradient(#CBD5E1 1px, transparent 1px);
+  background-size: auto, 18px 18px;
+  box-shadow:
+    inset 0 2px 10px rgba(15, 23, 42, 0.06),
+    0 8px 20px -6px rgba(15, 23, 42, 0.12);
+}
+
+/* Left Panel Framed Dry-Erase Backing */
+.whiteboard-panel-surface {
+  background: linear-gradient(180deg, #F8FAFC 0%, #F1F5F9 100%);
+  box-shadow:
+    inset 0 2px 8px rgba(15, 23, 42, 0.05),
+    0 12px 28px -6px rgba(30, 41, 59, 0.14);
+}
+
+/* Brushed Aluminum Whiteboard Marker Tray Ledge */
+.whiteboard-marker-ledge {
+  background: linear-gradient(180deg, #E2E8F0 0%, #CBD5E1 52%, #94A3B8 100%);
+  border-top: 1px solid #FFFFFF;
+  box-shadow:
+    inset 0 -2px 4px rgba(15, 23, 42, 0.16),
+    0 4px 10px rgba(15, 23, 42, 0.12);
+}
+
 /* Open Workbook Cream Paper with ruled lines & classic crimson margin line */
 .workbook-paper-surface {
   background-color: #FDFBF7;

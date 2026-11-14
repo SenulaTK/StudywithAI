@@ -24,6 +24,7 @@ import {
 } from '@/lib/store';
 import { chiptuneAudio } from '@/lib/audio';
 import { storageAdapter } from '@/lib/storage';
+import { WhiteboardTeachingStage } from '@/components/roadmap/WhiteboardTeachingStage';
 
 const BADGE_CONFIG: Record<
   BadgeStatus,
@@ -37,44 +38,44 @@ const BADGE_CONFIG: Record<
   LOCKED: {
     label: 'Locked',
     cardStyle:
-      'bg-slate-900/50 border-slate-700/80 opacity-65 cursor-not-allowed',
-    pillStyle: 'bg-slate-800 text-slate-400',
+      'bg-slate-100 border-slate-300 opacity-75 cursor-not-allowed',
+    pillStyle: 'bg-slate-200 text-slate-600',
     iconColor: 'text-slate-500',
   },
   UNLOCKED: {
     label: 'Active',
     cardStyle:
-      'bg-[#10B981]/15 border-[#10B981]/70 cursor-pointer hover:border-[#FDE047]',
-    pillStyle: 'bg-[#10B981]/25 text-emerald-200',
-    iconColor: 'text-[#10B981]',
+      'bg-emerald-50/85 border-[#10B981] cursor-pointer hover:border-[#1E293B]',
+    pillStyle: 'bg-[#10B981]/20 text-[#065F46]',
+    iconColor: 'text-[#059669]',
   },
   BRONZE: {
     label: '🥉 Bronze',
     cardStyle:
-      'bg-amber-950/35 border-amber-600/70 cursor-pointer hover:border-[#FDE047]',
-    pillStyle: 'bg-amber-900/60 text-amber-200',
-    iconColor: 'text-amber-400',
+      'bg-amber-50 border-amber-500 cursor-pointer hover:border-[#1E293B]',
+    pillStyle: 'bg-amber-200/75 text-amber-950',
+    iconColor: 'text-amber-700',
   },
   SILVER: {
     label: '🥈 Silver',
     cardStyle:
-      'bg-slate-800/60 border-slate-400/70 cursor-pointer hover:border-[#FDE047]',
-    pillStyle: 'bg-slate-700 text-slate-100',
-    iconColor: 'text-slate-200',
+      'bg-slate-100 border-slate-400 cursor-pointer hover:border-[#1E293B]',
+    pillStyle: 'bg-slate-200 text-slate-900',
+    iconColor: 'text-slate-700',
   },
   GOLD: {
     label: '🥇 Gold',
     cardStyle:
-      'bg-yellow-500/15 border-[#FDE047]/80 cursor-pointer hover:border-[#FDE047]',
-    pillStyle: 'bg-[#FDE047]/20 text-[#FDE047]',
-    iconColor: 'text-[#FDE047]',
+      'bg-yellow-50 border-amber-400 cursor-pointer hover:border-[#1E293B]',
+    pillStyle: 'bg-[#FDE047]/70 text-amber-950',
+    iconColor: 'text-amber-600',
   },
   DIAMOND: {
     label: '💎 Diamond',
     cardStyle:
-      'bg-cyan-500/15 border-cyan-300/80 cursor-pointer hover:border-[#FDE047]',
-    pillStyle: 'bg-cyan-500/20 text-cyan-200',
-    iconColor: 'text-cyan-300',
+      'bg-cyan-50 border-cyan-400 cursor-pointer hover:border-[#1E293B]',
+    pillStyle: 'bg-cyan-100 text-cyan-950',
+    iconColor: 'text-cyan-700',
   },
 };
 
@@ -90,6 +91,8 @@ export function ChalkboardRoadmap() {
     syllabusBoard,
     roadmapState,
     activeTopicId,
+    activeCallState,
+    workbookDialogues,
     userXP,
     streakCount,
     backpackFiles,
@@ -125,6 +128,14 @@ export function ChalkboardRoadmap() {
   const subjectFiles = backpackFiles.filter(
     (f) => f.subject === currentSubject
   );
+  const activeNode =
+    subjectNodes.find((n) => n.id === activeTopicId) || null;
+  const activeTurns = activeNode
+    ? workbookDialogues[activeNode.id] || []
+    : [];
+  const lastBarnabyTurn = [...activeTurns]
+    .reverse()
+    .find((t) => t.role === 'barnaby');
 
   const currentLevel = Math.floor(userXP / 500) + 1;
   const xpIntoLevel = userXP % 500;
@@ -261,27 +272,27 @@ export function ChalkboardRoadmap() {
 
   return (
     <aside
-      aria-label="Left Panel: Chalkboard Roadmap"
-      className="flex flex-col h-full rounded-2xl overflow-hidden border-4 border-[#4E342E] shadow-[0_12px_28px_-6px_rgba(30,41,59,0.22)]"
+      aria-label="Left Panel: Classroom Whiteboard"
+      className="flex flex-col h-full rounded-2xl overflow-hidden border-4 border-[#475569] shadow-[0_12px_28px_-6px_rgba(30,41,59,0.2)]"
     >
-      <div className="chalkboard-surface p-4 text-[#F1F5F9] flex-1 flex flex-col justify-between gap-4">
-        <div className="space-y-4">
-          {/* Chalkboard Header */}
-          <div className="flex items-center justify-between gap-2 border-b border-emerald-800/70 pb-3">
+      <div className="whiteboard-panel-surface p-4 text-[#1E293B] flex-1 flex flex-col justify-between gap-4">
+        <div className="space-y-3.5">
+          {/* Whiteboard Header */}
+          <div className="flex items-center justify-between gap-2 border-b-2 border-[#CBD5E1] pb-3">
             <div className="min-w-0">
-              <span className="text-xs font-mono uppercase tracking-wider text-[#10B981] font-bold block">
+              <span className="text-xs font-mono uppercase tracking-wider text-[#059669] font-bold block">
                 {currentSubject
                   ? syllabusBoard || 'Notebook'
                   : 'Study Desk'}
               </span>
-              <h2 className="text-lg font-bold font-serif text-[#FDFBF7] truncate">
-                {currentSubject ? `${currentSubject} Roadmap` : 'Chalkboard'}
+              <h2 className="text-lg font-bold font-serif text-[#0F172A] truncate">
+                {currentSubject ? `${currentSubject} Whiteboard` : 'Whiteboard'}
               </h2>
             </div>
 
             {currentSubject ? (
               <div className="flex items-center gap-1.5 shrink-0">
-                <span className="px-2.5 py-1 rounded-lg bg-black/30 border border-emerald-800 text-xs font-mono font-bold text-[#FDE047]">
+                <span className="px-2.5 py-1 rounded-lg bg-[#1A2E26] text-xs font-mono font-bold text-[#FDE047]">
                   {
                     subjectNodes.filter(
                       (n) => n.status !== 'LOCKED' && n.status !== 'UNLOCKED'
@@ -298,55 +309,62 @@ export function ChalkboardRoadmap() {
                   }}
                   title="Add New Topic"
                   aria-label="Add New Topic"
-                  className="p-1.5 rounded-lg bg-[#10B981] hover:bg-[#059669] text-[#FDFBF7] cursor-pointer transition-colors"
+                  className="p-1.5 rounded-lg bg-[#10B981] hover:bg-[#059669] text-white cursor-pointer transition-colors"
                 >
                   <Plus className="w-4 h-4" />
                 </button>
               </div>
             ) : (
-              <span className="px-2.5 py-1 rounded-lg bg-black/30 border border-emerald-800 text-xs font-mono font-bold text-slate-300">
+              <span className="px-2.5 py-1 rounded-lg bg-white border border-[#CBD5E1] text-xs font-mono font-bold text-slate-600">
                 0 Notebooks
               </span>
             )}
           </div>
 
           {/* Scholar XP & Streak Bar */}
-          <div className="space-y-1.5 px-1">
+          <div className="space-y-1.5 px-0.5">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-bold text-[#FDE047] flex items-center gap-1.5">
-                <Crown className="w-3.5 h-3.5" />
+              <span className="font-bold text-[#1E293B] flex items-center gap-1.5">
+                <Crown className="w-3.5 h-3.5 text-[#D97706]" />
                 Level {currentLevel} Scholar
               </span>
-              <span className="font-mono text-[#F59E0B] flex items-center gap-1 font-semibold">
-                <Flame className="w-3.5 h-3.5 fill-[#F59E0B]" />
+              <span className="font-mono text-[#B45309] flex items-center gap-1 font-semibold">
+                <Flame className="w-3.5 h-3.5 fill-[#F59E0B] text-[#D97706]" />
                 {streakCount}d Streak
               </span>
             </div>
-            <div className="w-full h-2.5 rounded-full bg-black/40 overflow-hidden border border-emerald-900">
+            <div className="w-full h-2.5 rounded-full bg-slate-200 overflow-hidden border border-slate-300">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-[#10B981] to-[#FDE047] transition-all duration-500"
+                className="h-full rounded-full bg-gradient-to-r from-[#10B981] to-[#F59E0B] transition-all duration-700"
                 style={{ width: `${levelProgressPct}%` }}
               />
             </div>
-            <div className="flex items-center justify-between text-xs font-mono text-slate-300">
+            <div className="flex items-center justify-between text-xs font-mono text-slate-600">
               <span>{userXP.toLocaleString()} XP</span>
               <span>{500 - xpIntoLevel} XP to next level</span>
             </div>
           </div>
 
+          {/* Interactive Whiteboard + Animated Owl Teacher */}
+          <WhiteboardTeachingStage
+            activeNode={activeNode}
+            activeCallState={activeCallState}
+            lastBarnabyTurn={lastBarnabyTurn}
+          />
+
           {/* Blank Slate: Create First Notebook */}
           {!currentSubject ? (
             <form
               onSubmit={handleCreateFirstNotebook}
-              className="rounded-xl border-2 border-dashed border-emerald-700/80 bg-black/25 p-4 space-y-3"
+              className="rounded-xl border-2 border-dashed border-[#94A3B8] bg-white/90 p-4 space-y-3"
             >
-              <div className="flex items-center gap-2 text-[#FDE047]">
-                <BookPlus className="w-5 h-5 shrink-0" />
-                <h3 className="text-sm font-bold text-[#FDFBF7]">
+              <div className="flex items-center gap-2 text-[#1A2E26]">
+                <BookPlus className="w-5 h-5 shrink-0 text-[#059669]" />
+                <h3 className="text-sm font-bold text-[#0F172A]">
                   Create Your First Notebook
                 </h3>
               </div>
-              <p className="text-xs text-slate-300 leading-relaxed">
+              <p className="text-xs text-slate-600 leading-relaxed">
                 Start with a blank notebook and add only the topics you want to
                 study.
               </p>
@@ -357,19 +375,19 @@ export function ChalkboardRoadmap() {
                 placeholder="Notebook name"
                 value={nbName}
                 onChange={(e) => setNbName(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-[#14241E] border border-emerald-700 text-xs text-[#FDFBF7] placeholder:text-slate-400 focus:outline-none focus:border-[#FDE047]"
+                className="w-full px-3 py-2 rounded-lg bg-white border border-[#CBD5E1] text-xs text-[#1E293B] placeholder:text-slate-400 focus:outline-none focus:border-[#059669]"
               />
               <input
                 type="text"
                 placeholder="Course or curriculum tag (optional)"
                 value={nbBoard}
                 onChange={(e) => setNbBoard(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-[#14241E] border border-emerald-700 text-xs text-[#FDFBF7] placeholder:text-slate-400 focus:outline-none focus:border-[#FDE047]"
+                className="w-full px-3 py-2 rounded-lg bg-white border border-[#CBD5E1] text-xs text-[#1E293B] placeholder:text-slate-400 focus:outline-none focus:border-[#059669]"
               />
               <button
                 id="chalkboard-create-notebook-btn"
                 type="submit"
-                className="w-full py-2 px-3 rounded-lg bg-[#FDE047] hover:bg-yellow-300 text-[#1E293B] text-xs font-bold cursor-pointer transition-colors"
+                className="w-full py-2 px-3 rounded-lg bg-[#1A2E26] hover:bg-[#243F35] text-[#FDE047] text-xs font-bold cursor-pointer transition-colors shadow-[2px_2px_0px_#10B981]"
               >
                 Create Notebook
               </button>
@@ -383,11 +401,12 @@ export function ChalkboardRoadmap() {
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: 'auto' }}
                     exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.36, ease: [0.22, 1, 0.36, 1] }}
                     onSubmit={handleCreateTopicSubmit}
-                    className="overflow-hidden rounded-xl border border-emerald-700 bg-black/30 p-3 space-y-2.5"
+                    className="overflow-hidden rounded-xl border-2 border-[#CBD5E1] bg-white p-3 space-y-2.5"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-mono font-bold text-[#FDE047]">
+                      <span className="text-xs font-mono font-bold text-[#065F46]">
                         {subjectNodes.length === 0
                           ? `Add First Topic to ${currentSubject}`
                           : 'New Topic'}
@@ -396,7 +415,7 @@ export function ChalkboardRoadmap() {
                         <button
                           type="button"
                           onClick={() => setShowAddTopic(false)}
-                          className="text-xs text-slate-300 hover:text-white cursor-pointer"
+                          className="text-xs text-slate-600 hover:text-[#1E293B] cursor-pointer"
                         >
                           Close
                         </button>
@@ -408,7 +427,7 @@ export function ChalkboardRoadmap() {
                         placeholder="Code"
                         value={topicCode}
                         onChange={(e) => setTopicCode(e.target.value)}
-                        className="col-span-1 px-2.5 py-1.5 rounded-lg bg-[#14241E] border border-emerald-800 text-xs text-[#FDFBF7] placeholder:text-slate-400 focus:outline-none focus:border-[#FDE047]"
+                        className="col-span-1 px-2.5 py-1.5 rounded-lg bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#1E293B] placeholder:text-slate-400 focus:outline-none focus:border-[#059669]"
                       />
                       <input
                         id="chalkboard-new-topic-title"
@@ -417,7 +436,7 @@ export function ChalkboardRoadmap() {
                         placeholder="Topic title"
                         value={topicTitle}
                         onChange={(e) => setTopicTitle(e.target.value)}
-                        className="col-span-2 px-2.5 py-1.5 rounded-lg bg-[#14241E] border border-emerald-800 text-xs text-[#FDFBF7] placeholder:text-slate-400 focus:outline-none focus:border-[#FDE047]"
+                        className="col-span-2 px-2.5 py-1.5 rounded-lg bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#1E293B] placeholder:text-slate-400 focus:outline-none focus:border-[#059669]"
                       />
                     </div>
                     <input
@@ -425,21 +444,21 @@ export function ChalkboardRoadmap() {
                       placeholder="Short note (optional)"
                       value={topicSubtitle}
                       onChange={(e) => setTopicSubtitle(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-[#14241E] border border-emerald-800 text-xs text-[#FDFBF7] placeholder:text-slate-400 focus:outline-none focus:border-[#FDE047]"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#1E293B] placeholder:text-slate-400 focus:outline-none focus:border-[#059669]"
                     />
                     <button
                       id="chalkboard-submit-topic-btn"
                       type="submit"
                       className="w-full py-1.5 rounded-lg bg-[#10B981] hover:bg-[#059669] text-white text-xs font-bold cursor-pointer transition-colors"
                     >
-                      Add Topic to Roadmap
+                      Add Topic to Whiteboard
                     </button>
                   </motion.form>
                 )}
               </AnimatePresence>
 
               {/* Topic Nodes List */}
-              <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-0.5">
+              <div className="space-y-2.5 max-h-[280px] overflow-y-auto pr-0.5">
                 {subjectNodes.map((node, index) => {
                   const cfg = BADGE_CONFIG[node.status];
                   const isSelected = node.id === activeTopicId;
@@ -452,8 +471,8 @@ export function ChalkboardRoadmap() {
                       initial={{ opacity: 0, x: -16 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{
-                        duration: 0.22,
-                        delay: index * 0.04,
+                        duration: 0.38,
+                        delay: index * 0.06,
                         ease: [0.22, 1, 0.36, 1],
                       }}
                       onClick={() => handleSelectNode(node)}
@@ -466,7 +485,7 @@ export function ChalkboardRoadmap() {
                       }}
                       className={`group rounded-xl border-2 p-3 transition-all ${cfg.cardStyle} ${
                         isSelected
-                          ? 'border-[#FDE047] bg-[#1E3A2F] shadow-[3px_3px_0px_#FDE047] translate-x-0.5'
+                          ? 'border-[#1E293B] bg-[#FEF9C3] shadow-[3px_3px_0px_#1E293B] translate-x-0.5'
                           : ''
                       }`}
                     >
@@ -481,19 +500,19 @@ export function ChalkboardRoadmap() {
                               <Crown className="w-4 h-4" />
                             )}
                           </span>
-                          <span className="text-xs font-mono font-bold text-emerald-300">
+                          <span className="text-xs font-mono font-bold text-[#065F46]">
                             {node.code}
                           </span>
                         </div>
 
                         <div className="flex items-center gap-1.5">
                           {node.spacedDue && (
-                            <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-[#F59E0B]/25 text-[#FDE047]">
+                            <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
                               Review Due
                             </span>
                           )}
                           {node.weakPoint && (
-                            <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-[#EF4444]/25 text-red-200">
+                            <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-rose-100 text-rose-900 border border-rose-300">
                               Practice
                             </span>
                           )}
@@ -518,11 +537,11 @@ export function ChalkboardRoadmap() {
                         </div>
                       </div>
 
-                      <h3 className="text-sm font-bold text-[#FDFBF7] mt-1.5 leading-snug">
+                      <h3 className="text-sm font-bold text-[#0F172A] mt-1.5 leading-snug">
                         {node.title}
                       </h3>
                       {node.subtitle && (
-                        <p className="text-xs text-slate-300 mt-0.5 line-clamp-1">
+                        <p className="text-xs text-slate-600 mt-0.5 line-clamp-1">
                           {node.subtitle}
                         </p>
                       )}
@@ -537,14 +556,16 @@ export function ChalkboardRoadmap() {
                   <button
                     type="button"
                     onClick={() => setConfirmDeleteNotebook(true)}
-                    className="text-xs text-slate-400 hover:text-red-300 flex items-center gap-1 cursor-pointer"
+                    className="text-xs text-slate-500 hover:text-[#DC2626] flex items-center gap-1 cursor-pointer"
                   >
                     <Trash2 className="w-3 h-3" />
                     Delete {currentSubject}
                   </button>
                 ) : (
                   <div className="flex items-center gap-2 text-xs">
-                    <span className="text-red-200">Delete notebook?</span>
+                    <span className="text-[#991B1B] font-semibold">
+                      Delete notebook?
+                    </span>
                     <button
                       type="button"
                       onClick={() => {
@@ -559,7 +580,7 @@ export function ChalkboardRoadmap() {
                     <button
                       type="button"
                       onClick={() => setConfirmDeleteNotebook(false)}
-                      className="px-2 py-0.5 rounded bg-slate-700 text-slate-200 cursor-pointer"
+                      className="px-2 py-0.5 rounded bg-slate-200 text-slate-800 cursor-pointer"
                     >
                       No
                     </button>
@@ -583,7 +604,7 @@ export function ChalkboardRoadmap() {
             setIsDragging(false);
             processUploadedFiles(e.dataTransfer.files);
           }}
-          className="pt-3 border-t border-emerald-800/70"
+          className="pt-3 border-t border-[#CBD5E1]"
         >
           <button
             type="button"
@@ -591,16 +612,16 @@ export function ChalkboardRoadmap() {
               setBackpackOpen(!backpackOpen);
               chiptuneAudio.playPaperFlip();
             }}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-black/25 hover:bg-black/35 border border-emerald-800/80 text-xs font-bold text-[#FDFBF7] cursor-pointer transition-colors"
+            className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-white hover:bg-slate-50 border border-[#CBD5E1] text-xs font-bold text-[#1E293B] cursor-pointer transition-colors"
           >
             <span className="flex items-center gap-2">
-              <FolderOpen className="w-4 h-4 text-[#FDE047]" />
+              <FolderOpen className="w-4 h-4 text-[#D97706]" />
               Class Notes Backpack ({subjectFiles.length})
             </span>
             {backpackOpen ? (
-              <ChevronUp className="w-4 h-4 text-slate-300" />
+              <ChevronUp className="w-4 h-4 text-slate-500" />
             ) : (
-              <ChevronDown className="w-4 h-4 text-slate-300" />
+              <ChevronDown className="w-4 h-4 text-slate-500" />
             )}
           </button>
 
@@ -610,7 +631,7 @@ export function ChalkboardRoadmap() {
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.2 }}
+                transition={{ duration: 0.36, ease: [0.22, 1, 0.36, 1] }}
                 className="overflow-hidden pt-2.5 space-y-2"
               >
                 <div
@@ -620,14 +641,14 @@ export function ChalkboardRoadmap() {
                   }}
                   className={`rounded-xl border-2 border-dashed p-3 text-center transition-all ${
                     !currentSubject
-                      ? 'border-slate-700 bg-black/20 opacity-60 cursor-not-allowed'
+                      ? 'border-slate-300 bg-slate-100/70 opacity-70 cursor-not-allowed'
                       : isDragging
-                        ? 'border-[#FDE047] bg-[#10B981]/20 cursor-pointer'
-                        : 'border-emerald-700/80 bg-black/20 hover:border-[#10B981] cursor-pointer'
+                        ? 'border-[#1E293B] bg-emerald-50 cursor-pointer'
+                        : 'border-[#94A3B8] bg-white hover:border-[#059669] cursor-pointer'
                   }`}
                 >
-                  <Upload className="w-4 h-4 text-[#10B981] mx-auto mb-1" />
-                  <p className="text-xs font-medium text-slate-200">
+                  <Upload className="w-4 h-4 text-[#059669] mx-auto mb-1" />
+                  <p className="text-xs font-medium text-slate-700">
                     {currentSubject
                       ? `Upload PDF or Notes for ${currentSubject}`
                       : 'Create or open a notebook first to attach files'}
@@ -643,8 +664,8 @@ export function ChalkboardRoadmap() {
                 </div>
 
                 {uploadStatus && (
-                  <div className="p-2 rounded-lg bg-[#10B981]/20 border border-[#10B981] text-xs text-emerald-100 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-[#FDE047] shrink-0" />
+                  <div className="p-2 rounded-lg bg-emerald-50 border border-[#10B981] text-xs text-[#065F46] flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-[#D97706] shrink-0" />
                     <span>{uploadStatus}</span>
                   </div>
                 )}
@@ -653,11 +674,11 @@ export function ChalkboardRoadmap() {
                   {subjectFiles.map((file) => (
                     <div
                       key={file.id}
-                      className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-black/30 border border-white/10 text-xs"
+                      className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-white border border-[#CBD5E1] text-xs"
                     >
                       <div className="flex items-center gap-2 min-w-0">
-                        <FileText className="w-3.5 h-3.5 text-[#FDE047] shrink-0" />
-                        <span className="truncate text-slate-100">
+                        <FileText className="w-3.5 h-3.5 text-[#059669] shrink-0" />
+                        <span className="truncate text-[#1E293B]">
                           {file.name}
                         </span>
                       </div>
@@ -679,13 +700,15 @@ export function ChalkboardRoadmap() {
         </div>
       </div>
 
-      {/* Wooden Chalk Ledge */}
+      {/* Brushed Aluminum Whiteboard Marker Tray & Felt Eraser */}
       <div
         aria-hidden="true"
-        className="chalkboard-wood-ledge h-3.5 px-6 flex items-center justify-end gap-3"
+        className="whiteboard-marker-ledge h-4 px-5 flex items-center justify-end gap-2.5"
       >
-        <span className="w-7 h-1.5 rounded-xs bg-[#F8FAFC] shadow-xs rotate-2" />
-        <span className="w-5 h-1.5 rounded-xs bg-[#FDE047] shadow-xs -rotate-3" />
+        <span className="w-8 h-2 rounded-xs bg-[#1E293B] border border-slate-500 shadow-xs" />
+        <span className="w-6 h-1.5 rounded-full bg-[#059669] shadow-xs rotate-1" />
+        <span className="w-6 h-1.5 rounded-full bg-[#DC2626] shadow-xs -rotate-2" />
+        <span className="w-5 h-1.5 rounded-full bg-[#0284C7] shadow-xs" />
       </div>
     </aside>
   );

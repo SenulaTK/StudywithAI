@@ -17,7 +17,7 @@ import { DESK_SCHEMA_VERSION, storageAdapter } from '@/lib/storage';
 import { geminiRotator } from '@/lib/gemini';
 
 const STATION_NAMES = {
-  left: 'Chalkboard Roadmap',
+  left: 'Classroom Whiteboard',
   center: 'Open Workbook & Professor Barnaby',
   right: 'Notes & Graph',
 } as const;
@@ -170,13 +170,13 @@ export default function StudyDeskPage() {
           <PersonaMenuStage stageKey={cameraPan}>
             {cameraPan === 'overview' ? (
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
-                {/* LEFT PANEL (3 cols): Chalkboard Roadmap */}
+                {/* LEFT PANEL (3 cols): Classroom Whiteboard */}
                 <motion.div
-                  initial={{ opacity: 0, x: -20 }}
+                  initial={{ opacity: 0, x: -24 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{
-                    duration: 0.28,
-                    delay: 0.04,
+                    duration: 0.52,
+                    delay: 0.08,
                     ease: [0.22, 1, 0.36, 1],
                   }}
                   className="lg:col-span-3"
@@ -186,11 +186,11 @@ export default function StudyDeskPage() {
 
                 {/* MIDDLE PANEL (5 cols): Open Workbook Canvas + Professor Barnaby */}
                 <motion.div
-                  initial={{ opacity: 0, y: 18 }}
+                  initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{
-                    duration: 0.3,
-                    delay: 0.1,
+                    duration: 0.52,
+                    delay: 0.18,
                     ease: [0.22, 1, 0.36, 1],
                   }}
                   className="lg:col-span-5"
@@ -200,11 +200,11 @@ export default function StudyDeskPage() {
 
                 {/* RIGHT PANEL (4 cols): 3D Sticky Note Desk & Blank Graph/Cornell Studio */}
                 <motion.div
-                  initial={{ opacity: 0, x: 20 }}
+                  initial={{ opacity: 0, x: 24 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{
-                    duration: 0.3,
-                    delay: 0.15,
+                    duration: 0.52,
+                    delay: 0.28,
                     ease: [0.22, 1, 0.36, 1],
                   }}
                   className="lg:col-span-4"
@@ -222,7 +222,7 @@ export default function StudyDeskPage() {
                       chiptuneAudio.playMenuSlash();
                       panToOverview();
                     }}
-                    className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-[#FDFBF7] hover:bg-[#FDE047] border-2 border-[#1E293B] text-xs font-bold text-[#1E293B] -skew-x-6 shadow-[3px_3px_0px_#1E293B] transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-[#FDFBF7] hover:bg-[#FDE047] border-2 border-[#1E293B] text-xs font-bold text-[#1E293B] -skew-x-6 shadow-[3px_3px_0px_#1E293B] transition-colors duration-300 cursor-pointer"
                   >
                     <ArrowLeft className="w-3.5 h-3.5 skew-x-6" />
                     <span className="skew-x-6">Back to 3-Panel Desk</span>

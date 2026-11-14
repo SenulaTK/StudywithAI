@@ -71,7 +71,7 @@ const THEME_PALETTES: Record<
 
 /**
  * Full-screen Persona-inspired diagonal ribbon slash & school schedule cut-in transition.
- * Fires smoothly when switching classroom stations or subjects, then clears in ~480ms.
+ * Fires smoothly when switching classroom stations or subjects, then clears in ~1120ms.
  */
 export function PersonaSchoolCurtain() {
   const { transitionBanner, clearTransition } = useStudyDeskStore();
@@ -85,7 +85,7 @@ export function PersonaSchoolCurtain() {
     if (!transitionBanner) return;
     const timeout = setTimeout(() => {
       clearTransition();
-    }, reducedMotion ? 150 : 480);
+    }, reducedMotion ? 220 : 1120);
     return () => clearTimeout(timeout);
   }, [transitionBanner, clearTransition, reducedMotion]);
 
@@ -105,16 +105,16 @@ export function PersonaSchoolCurtain() {
           initial={{ opacity: 1 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.14 }}
+          transition={{ duration: 0.28 }}
         >
           {/* Ribbon 1: Deep Slate Diagonal Sweep */}
           <motion.div
             className={`absolute -inset-y-16 -left-1/4 w-[150%] ${palette.primaryRibbon} -skew-x-12`}
             initial={{ x: '-115%' }}
-            animate={{ x: ['-115%', '0%', '115%'] }}
+            animate={{ x: ['-115%', '0%', '0%', '115%'] }}
             transition={{
-              duration: 0.46,
-              times: [0, 0.36, 1],
+              duration: 1.05,
+              times: [0, 0.34, 0.66, 1],
               ease: [0.22, 1, 0.36, 1],
             }}
           />
@@ -123,11 +123,11 @@ export function PersonaSchoolCurtain() {
           <motion.div
             className={`absolute -inset-y-16 -left-1/4 w-[140%] ${palette.accentRibbon} -skew-x-12 opacity-95`}
             initial={{ x: '-120%' }}
-            animate={{ x: ['-120%', '4%', '120%'] }}
+            animate={{ x: ['-120%', '3%', '3%', '120%'] }}
             transition={{
-              duration: 0.44,
-              delay: 0.04,
-              times: [0, 0.4, 1],
+              duration: 0.98,
+              delay: 0.08,
+              times: [0, 0.35, 0.67, 1],
               ease: [0.22, 1, 0.36, 1],
             }}
           />
@@ -136,11 +136,11 @@ export function PersonaSchoolCurtain() {
           <motion.div
             className={`absolute top-1/2 -translate-y-1/2 h-32 w-[140%] ${palette.paperRibbon} border-y-4 border-[#1E293B] -skew-x-12 opacity-90`}
             initial={{ x: '115%' }}
-            animate={{ x: ['115%', '-4%', '-115%'] }}
+            animate={{ x: ['115%', '-3%', '-3%', '-115%'] }}
             transition={{
-              duration: 0.44,
-              delay: 0.03,
-              times: [0, 0.42, 1],
+              duration: 0.98,
+              delay: 0.06,
+              times: [0, 0.36, 0.67, 1],
               ease: [0.22, 1, 0.36, 1],
             }}
           />
@@ -148,15 +148,15 @@ export function PersonaSchoolCurtain() {
           {/* Center Tilted School Stamp Cut-In */}
           <motion.div
             className={`relative z-10 px-7 py-3.5 border-4 ${palette.stampBg} -skew-x-12 shadow-[8px_8px_0px_#1E293B]`}
-            initial={{ scale: 0.72, opacity: 0, x: -40 }}
+            initial={{ scale: 0.76, opacity: 0, x: -44 }}
             animate={{
-              scale: [0.72, 1.06, 1, 0.94],
+              scale: [0.76, 1.04, 1, 0.96],
               opacity: [0, 1, 1, 0],
-              x: [-40, 0, 0, 50],
+              x: [-44, 0, 0, 52],
             }}
             transition={{
-              duration: 0.45,
-              times: [0, 0.25, 0.72, 1],
+              duration: 1.02,
+              times: [0, 0.24, 0.76, 1],
               ease: [0.22, 1, 0.36, 1],
             }}
           >
@@ -180,7 +180,7 @@ export function PersonaSchoolCurtain() {
 }
 
 /**
- * Snappy Persona-style angled reveal container for switching internal menus/tabs.
+ * Unhurried Persona-style angled reveal container for switching internal menus/tabs.
  */
 export function PersonaMenuStage({
   stageKey,
@@ -195,12 +195,20 @@ export function PersonaMenuStage({
     <AnimatePresence mode="wait">
       <motion.div
         key={stageKey}
-        initial={{ opacity: 0, x: 24, skewX: -2.5, scale: 0.99 }}
-        animate={{ opacity: 1, x: 0, skewX: 0, scale: 1 }}
-        exit={{ opacity: 0, x: -20, skewX: 1.5, scale: 0.99 }}
-        transition={{
-          duration: 0.22,
-          ease: [0.22, 1, 0.36, 1],
+        initial={{ opacity: 0, x: 32, skewX: -2.5, scale: 0.985 }}
+        animate={{
+          opacity: 1,
+          x: 0,
+          skewX: 0,
+          scale: 1,
+          transition: { duration: 0.48, ease: [0.22, 1, 0.36, 1] },
+        }}
+        exit={{
+          opacity: 0,
+          x: -24,
+          skewX: 1.5,
+          scale: 0.99,
+          transition: { duration: 0.3, ease: [0.4, 0, 0.2, 1] },
         }}
         className={className}
       >
